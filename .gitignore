@@ -1,0 +1,39 @@
+# 忽略密钥文件 (本地私密存放)
+.vault_pass
+*.key
+*.pem
+
+# 忽略临时解密文件
+*.tmp
+.tmp/
+tmp/
+decrypted_*/
+
+# Python / Ansible
+*.pyc
+__pycache__/
+.ansible_cache/
+
+# 忽略 K8s 动态生成内容
+.kube/
+kubeconfig.bak
+
+# pyenv
+.python-version
+
+# dotenv
+.env
+
+# virtualenv
+env/
+venv/
+ENV/
+.env/
+/invest/.venv/
+/invest/*.db
+/invest.db
+*.egg-info/
+
+# Userscripts
+userscripts/dist/
+userscripts/node_modules/

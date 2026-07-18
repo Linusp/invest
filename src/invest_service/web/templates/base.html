@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Invest{% endblock %}</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="/static/app.css">
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="/strategy" aria-label="Invest 首页">
+            <span class="brand-mark">I</span>
+            <span>Invest</span>
+        </a>
+        <nav class="nav-tabs" aria-label="主导航">
+            <a href="/market" class="{% if active_page == 'market' %}active{% endif %}">
+                <i data-lucide="chart-candlestick"></i><span>行情</span>
+            </a>
+            <a href="/strategy" class="{% if active_page == 'strategy' %}active{% endif %}">
+                <i data-lucide="briefcase-business"></i><span>策略</span>
+            </a>
+        </nav>
+        <a class="icon-button" href="/docs" title="API 文档" aria-label="API 文档">
+            <i data-lucide="file-json-2"></i>
+        </a>
+    </header>
+    <main class="page-shell">
+        {% block content %}{% endblock %}
+    </main>
+    <div id="toast" class="toast" role="status"></div>
+    <script>
+        window.API_ROOT = "/api/v1";
+        window.showToast = (message, kind = "info") => {
+            const toast = document.getElementById("toast");
+            toast.textContent = message;
+            toast.className = "toast visible " + kind;
+            clearTimeout(window.__toastTimer);
+            window.__toastTimer = setTimeout(() => toast.className = "toast", 3200);
+        };
+        window.api = async (path, options = {}) => {
+            const response = await fetch(window.API_ROOT + path, {
+                headers: {"Content-Type": "application/json", ...(options.headers || {})},
+                ...options,
+            });
+            if (!response.ok) {
+                let message = "请求失败";
+                try { message = (await response.json()).detail || message; } catch (_) {}
+                throw new Error(message);
+            }
+            return response.status === 204 ? null : response.json();
+        };
+        window.money = (value, currency = "CNY") =>
+            new Intl.NumberFormat("zh-CN", {
+                style: "currency", currency, maximumFractionDigits: 2,
+            }).format(Number(value || 0));
+        window.number = (value, digits = 2) =>
+            new Intl.NumberFormat("zh-CN", {maximumFractionDigits: digits}).format(Number(value || 0));
+        document.addEventListener("DOMContentLoaded", () => window.lucide?.createIcons());
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

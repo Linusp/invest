@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+{% set active_page = "market" %}
+{% block title %}行情 · Invest{% endblock %}
+{% block head %}
+<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <h1>市场行情</h1>
+        <p>个股、ETF 与指数日线</p>
+    </div>
+    <div class="actions">
+        <label class="field" style="width: 150px">
+            <span class="label">开始日期</span>
+            <input id="start-date" class="input" type="date">
+        </label>
+        <label class="field" style="width: 150px">
+            <span class="label">结束日期</span>
+            <input id="end-date" class="input" type="date">
+        </label>
+    </div>
+</section>
+
+<form id="market-search" class="market-toolbar">
+    <input id="market-query" class="input" type="search" placeholder="代码或名称" autocomplete="off">
+    <select id="market-category" class="select" aria-label="标的类型">
+        <option value="">全部类型</option>
+        <option value="stock">个股</option>
+        <option value="etf">ETF</option>
+        <option value="index">指数</option>
+    </select>
+    <button class="button primary" type="submit">
+        <i data-lucide="search"></i><span>搜索</span>
+    </button>
+</form>
+
+<div class="market-layout">
+    <aside class="panel">
+        <div class="panel-header">
+            <h2 class="panel-title">标的</h2>
+            <span id="asset-count" class="badge">0</span>
+        </div>
+        <div id="asset-results" class="asset-results"></div>
+    </aside>
+
+    <section class="panel" id="quote-panel">
+        <div id="quote-empty" class="empty-state">
+            <div><i data-lucide="chart-no-axes-combined"></i><div>选择一个标的</div></div>
+        </div>
+        <div id="quote-content" hidden>
+            <div class="quote-header">
+                <div class="quote-title">
+                    <h2 id="quote-name"></h2>
+                    <p><span id="quote-symbol" class="mono"></span> · <span id="quote-category"></span> · <span id="quote-currency" class="mono"></span></p>
+                </div>
+                <div class="actions">
+                    <div class="quote-price sensitive">
+                        <strong id="quote-close">--</strong>
+                        <span id="quote-change">--</span>
+                    </div>
+                    <button id="sync-asset" class="icon-button" type="button" title="更新行情" aria-label="更新行情">
+                        <i data-lucide="refresh-cw"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="market-chart" class="chart"></div>
+            <div class="table-wrap">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>日期</th><th class="text-right">开盘</th><th class="text-right">最高</th>
+                            <th class="text-right">最低</th><th class="text-right">收盘</th>
+                            <th class="text-right">涨跌幅</th><th class="text-right">成交量</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+    const state = { assets: [], selected: null, history: [], chart: null };
+    const $ = (id) => document.getElementById(id);
+    const categoryLabel = {stock: "个股", etf: "ETF", index: "指数"};
+    const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
+    })[c]);
+
+    function renderAssets() {
+        $("asset-count").textContent = state.assets.length;
+        $("asset-results").innerHTML = state.assets.length ? state.assets.map(asset => `
+            <button class="asset-row ${state.selected?.symbol === asset.symbol ? "active" : ""}"
+                    type="button" data-symbol="${escapeHtml(asset.symbol)}">
+                <span><strong>${escapeHtml(asset.name)}</strong><small class="mono">${escapeHtml(asset.symbol)}</small></span>
+                <span class="badge">${asset.currency}</span>
+            </button>`).join("") :
+            '<div class="empty-state" style="min-height:180px"><div>暂无标的</div></div>';
+        $("asset-results").querySelectorAll("[data-symbol]").forEach(button => {
+            button.addEventListener("click", () => selectAsset(
+                state.assets.find(asset => asset.symbol === button.dataset.symbol)
+            ));
+        });
+    }
+
+    async function loadAssets() {
+        try {
+            state.assets = await api("/assets?limit=200");
+            renderAssets();
+            const params = new URLSearchParams(location.search);
+            const requested = params.get("symbol") || params.get("code");
+            if (requested) {
+                let asset = state.assets.find(item => item.symbol === requested.toUpperCase());
+                if (!asset) {
+                    try { asset = await api("/assets/" + encodeURIComponent(requested)); } catch (_) {}
+                }
+                if (asset) await selectAsset(asset);
+            } else if (state.assets.length) {
+                await selectAsset(state.assets[0]);
+            }
+        } catch (error) { showToast(error.message, "error"); }
+    }
+
+    async function searchAssets(event) {
+        event.preventDefault();
+        const query = $("market-query").value.trim();
+        const category = $("market-category").value;
+        if (!query) {
+            const suffix = category ? "?category=" + category + "&limit=200" : "?limit=200";
+            state.assets = await api("/assets" + suffix);
+        } else {
+            const params = new URLSearchParams({q: query, limit: "50"});
+            if (category) params.set("category", category);
+            state.assets = await api("/assets/search?" + params);
+        }
+        renderAssets();
+        if (state.assets.length) await selectAsset(state.assets[0]);
+    }
+
+    async function selectAsset(asset) {
+        if (!asset) return;
+        state.selected = asset;
+        renderAssets();
+        history.replaceState({}, "", "/market?symbol=" + encodeURIComponent(asset.symbol));
+        $("quote-empty").hidden = true;
+        $("quote-content").hidden = false;
+        $("quote-name").textContent = asset.name;
+        $("quote-symbol").textContent = asset.symbol;
+        $("quote-category").textContent = categoryLabel[asset.category] || asset.category;
+        $("quote-currency").textContent = asset.currency;
+        await loadHistory();
+    }
+
+    async function loadHistory() {
+        if (!state.selected) return;
+        $("quote-panel").classList.add("loading");
+        try {
+            const params = new URLSearchParams({limit: "2000"});
+            if ($("start-date").value) params.set("start_date", $("start-date").value);
+            if ($("end-date").value) params.set("end_date", $("end-date").value);
+            state.history = await api(
+                "/assets/" + encodeURIComponent(state.selected.symbol) + "/history?" + params
+            );
+            renderQuote();
+            renderChart();
+            renderHistory();
+        } catch (error) {
+            showToast(error.message, "error");
+        } finally {
+            $("quote-panel").classList.remove("loading");
+        }
+    }
+
+    function renderQuote() {
+        const latest = state.history.at(-1);
+        if (!latest) {
+            $("quote-close").textContent = "--";
+            $("quote-change").textContent = "暂无行情";
+            return;
+        }
+        const previous = latest.previous_close ?? state.history.at(-2)?.close;
+        const change = previous ? Number(latest.close) - Number(previous) : 0;
+        const percent = previous ? change / Number(previous) * 100 : Number(latest.change_percent || 0);
+        $("quote-close").textContent = number(latest.close, 4);
+        $("quote-change").textContent = `${change >= 0 ? "+" : ""}${number(change, 4)} (${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%) · ${latest.trade_date}`;
+        $("quote-change").className = change >= 0 ? "positive" : "negative";
+    }
+
+    function renderHistory() {
+        $("history-body").innerHTML = state.history.slice(-12).reverse().map(row => `
+            <tr>
+                <td class="mono">${row.trade_date}</td>
+                <td class="text-right sensitive">${number(row.open, 4)}</td>
+                <td class="text-right sensitive">${number(row.high, 4)}</td>
+                <td class="text-right sensitive">${number(row.low, 4)}</td>
+                <td class="text-right sensitive"><strong>${number(row.close, 4)}</strong></td>
+                <td class="text-right ${Number(row.change_percent || 0) >= 0 ? "positive" : "negative"}">
+                    ${Number(row.change_percent || 0) >= 0 ? "+" : ""}${number(row.change_percent)}%
+                </td>
+                <td class="text-right">${number(row.volume, 0)}</td>
+            </tr>`).join("");
+    }
+
+    function movingAverage(period) {
+        return state.history.map((_, index) => {
+            if (index < period - 1) return null;
+            const values = state.history.slice(index - period + 1, index + 1);
+            return values.reduce((sum, row) => sum + Number(row.close), 0) / period;
+        });
+    }
+
+    function renderChart() {
+        const element = $("market-chart");
+        if (!window.echarts || !state.history.length) {
+            element.innerHTML = '<div class="empty-state">暂无行情数据</div>';
+            return;
+        }
+        state.chart ||= echarts.init(element);
+        const dates = state.history.map(row => row.trade_date);
+        state.chart.setOption({
+            animation: false,
+            tooltip: {trigger: "axis", axisPointer: {type: "cross"}},
+            legend: {top: 12, data: ["日线", "MA5", "MA20", "成交量"]},
+            grid: [
+                {left: 58, right: 54, top: 55, height: "60%"},
+                {left: 58, right: 54, top: "75%", height: "14%"},
+            ],
+            xAxis: [
+                {type: "category", data: dates, boundaryGap: true, axisLabel: {show: false}},
+                {type: "category", gridIndex: 1, data: dates, boundaryGap: true},
+            ],
+            yAxis: [
+                {scale: true, position: "right"},
+                {gridIndex: 1, scale: true, position: "right", splitLine: {show: false}},
+            ],
+            dataZoom: [{type: "inside", xAxisIndex: [0, 1], start: 60, end: 100}],
+            series: [
+                {
+                    name: "日线", type: "candlestick",
+                    data: state.history.map(row => [row.open, row.close, row.low, row.high]),
+                    itemStyle: {color: "#b53a3a", color0: "#198754", borderColor: "#b53a3a", borderColor0: "#198754"},
+                },
+                {name: "MA5", type: "line", symbol: "none", data: movingAverage(5), lineStyle: {width: 1, color: "#275ea8"}},
+                {name: "MA20", type: "line", symbol: "none", data: movingAverage(20), lineStyle: {width: 1, color: "#a45b12"}},
+                {
+                    name: "成交量", type: "bar", xAxisIndex: 1, yAxisIndex: 1,
+                    data: state.history.map(row => row.volume),
+                    itemStyle: {color: "#8c99aa"},
+                },
+            ],
+        }, true);
+    }
+
+    async function syncAsset() {
+        if (!state.selected) return;
+        const button = $("sync-asset");
+        button.disabled = true;
+        try {
+            const result = await api(
+                "/assets/" + encodeURIComponent(state.selected.symbol) + "/sync",
+                {method: "POST"}
+            );
+            showToast(`更新完成：新增 ${result.created}，更新 ${result.updated}`, "success");
+            await loadHistory();
+        } catch (error) {
+            showToast(error.message, "error");
+        } finally { button.disabled = false; }
+    }
+
+    $("market-search").addEventListener("submit", event => searchAssets(event).catch(error => showToast(error.message, "error")));
+    $("sync-asset").addEventListener("click", syncAsset);
+    $("start-date").addEventListener("change", loadHistory);
+    $("end-date").addEventListener("change", loadHistory);
+    window.addEventListener("resize", () => state.chart?.resize());
+    loadAssets();
+})();
+</script>
+{% endblock %}

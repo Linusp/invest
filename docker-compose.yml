@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-invest}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-invest}
+      POSTGRES_DB: ${POSTGRES_DB:-invest}
+    volumes:
+      - invest-db:/var/lib/postgresql/data
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      INVEST_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-invest}:${POSTGRES_PASSWORD:-invest}@db:5432/${POSTGRES_DB:-invest}
+      INVEST_AUTO_UPDATE_ENABLED: ${INVEST_AUTO_UPDATE_ENABLED:-true}
+      INVEST_AUTO_UPDATE_INTERVAL_MINUTES: ${INVEST_AUTO_UPDATE_INTERVAL_MINUTES:-60}
+      INVEST_MARKET_PROVIDER: ${INVEST_MARKET_PROVIDER:-tushare}
+      INVEST_TUSHARE_TOKEN: ${INVEST_TUSHARE_TOKEN:?set INVEST_TUSHARE_TOKEN}
+      INVEST_EASTMONEY_TOKEN: ${INVEST_EASTMONEY_TOKEN:-D43BF722C8E33BDC906FB84D85E326E8}
+      INVEST_INDEX_FALLBACK_PROVIDER: ${INVEST_INDEX_FALLBACK_PROVIDER:-akshare}
+      INVEST_ETF_FALLBACK_PROVIDER: ${INVEST_ETF_FALLBACK_PROVIDER:-akshare}
+      INVEST_REPORTING_CURRENCY: ${INVEST_REPORTING_CURRENCY:-CNY}
+      INVEST_EXCHANGE_RATE_UPDATE_HOUR: ${INVEST_EXCHANGE_RATE_UPDATE_HOUR:-23}
+    ports:
+      - "${INVEST_PORT:-8001}:8000"
+
+volumes:
+  invest-db:

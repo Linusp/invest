@@ -1,0 +1,736 @@
+{% extends "base.html" %}
+{% set active_page = "strategy" %}
+{% block title %}策略 · Invest{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <h1>策略管理</h1>
+        <p id="strategy-subtitle">组合、交易与持仓</p>
+    </div>
+    <div class="actions">
+        <button id="privacy-toggle" class="icon-button" type="button" title="隐私模式" aria-label="隐私模式">
+            <i data-lucide="eye"></i>
+        </button>
+        <button id="opening-snapshot" class="button" type="button" disabled>
+            <i data-lucide="database"></i><span>期初状态</span>
+        </button>
+        <button id="edit-strategy" class="button" type="button" disabled>
+            <i data-lucide="pencil"></i><span>编辑</span>
+        </button>
+        <button id="add-trade" class="button primary" type="button" disabled>
+            <i data-lucide="list-plus"></i><span>记一笔</span>
+        </button>
+    </div>
+</section>
+
+<div class="strategy-layout">
+    <aside class="panel strategy-sidebar">
+        <div class="panel-header">
+            <h2 class="panel-title">我的策略</h2>
+            <button id="new-strategy" class="icon-button" type="button" title="创建策略" aria-label="创建策略">
+                <i data-lucide="plus"></i>
+            </button>
+        </div>
+        <div id="strategy-list" class="strategy-list"></div>
+    </aside>
+
+    <section id="strategy-empty" class="panel empty-state">
+        <div>
+            <i data-lucide="briefcase-business"></i>
+            <div>暂无策略</div>
+            <button id="empty-create" class="button primary" type="button" style="margin-top:14px">创建策略</button>
+        </div>
+    </section>
+
+    <section id="strategy-detail" hidden>
+        <div class="metric-grid sensitive">
+            <div class="metric"><span>总资产</span><strong id="metric-total">--</strong></div>
+            <div class="metric"><span>净投入</span><strong id="metric-principal">--</strong></div>
+            <div class="metric"><span>现金</span><strong id="metric-cash">--</strong></div>
+            <div class="metric"><span>持仓市值</span><strong id="metric-market">--</strong></div>
+            <div class="metric"><span>总收益</span><strong id="metric-profit">--</strong></div>
+            <div class="metric"><span>收益率 / 仓位</span><strong id="metric-ratio">--</strong></div>
+            <div class="metric"><span>胜率</span><strong id="metric-win-rate">--</strong></div>
+            <div class="metric"><span>盈亏比</span><strong id="metric-profit-loss-ratio">--</strong></div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <div class="segmented" role="tablist">
+                    <button class="active" type="button" data-tab="positions">持仓</button>
+                    <button type="button" data-tab="trades">交易记录</button>
+                </div>
+                <button id="sync-positions" class="icon-button" type="button" title="同步持仓行情" aria-label="同步持仓行情">
+                    <i data-lucide="refresh-cw"></i>
+                </button>
+            </div>
+
+            <div id="positions-tab" class="table-wrap">
+                <table class="data-table">
+                    <thead><tr>
+                        <th>标的</th><th class="text-right">数量</th><th class="text-right">平均成本</th>
+                        <th class="text-right">最新价</th><th class="text-right">市值</th>
+                        <th class="text-right">已实现</th><th class="text-right">浮动盈亏</th>
+                    </tr></thead>
+                    <tbody id="positions-body"></tbody>
+                </table>
+            </div>
+
+            <div id="trades-tab" class="table-wrap" hidden>
+                <table class="data-table">
+                    <thead><tr>
+                        <th>日期</th><th>类型</th><th>标的</th><th>持仓 ID</th><th class="text-right">价格 / 金额</th>
+                        <th class="text-right">数量</th><th class="text-right">费用</th><th>备注</th>
+                    </tr></thead>
+                    <tbody id="trades-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</div>
+
+<dialog id="strategy-dialog">
+    <form id="strategy-form">
+        <div class="dialog-header">
+            <h2 id="strategy-dialog-title">创建策略</h2>
+            <button class="icon-button" type="button" data-close="strategy-dialog" aria-label="关闭"><i data-lucide="x"></i></button>
+        </div>
+        <div class="dialog-body">
+            <label class="field">
+                <span class="label">名称</span>
+                <input id="strategy-name" class="input" required maxlength="255">
+            </label>
+            <label class="field">
+                <span class="label">描述</span>
+                <textarea id="strategy-description" class="textarea" maxlength="2000"></textarea>
+            </label>
+        </div>
+        <div class="dialog-footer">
+            <button class="button" type="button" data-close="strategy-dialog">取消</button>
+            <button class="button primary" type="submit">保存</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="snapshot-dialog" class="dialog-wide">
+    <form id="snapshot-form">
+        <div class="dialog-header">
+            <h2>期初状态</h2>
+            <button class="icon-button" type="button" data-close="snapshot-dialog" aria-label="关闭"><i data-lucide="x"></i></button>
+        </div>
+        <div class="dialog-body dialog-body-scroll">
+            <label class="field">
+                <span class="label">状态日期</span>
+                <input id="snapshot-date" class="input" type="date" required>
+            </label>
+
+            <div class="snapshot-balance-grid">
+                <label class="field">
+                    <span class="label">现金币种</span>
+                    <input id="snapshot-balance-currency" class="input mono" maxlength="3" value="CNY">
+                </label>
+                <label class="field">
+                    <span class="label">现金</span>
+                    <input id="snapshot-balance-cash" class="input" type="number" step="0.000001">
+                </label>
+                <label class="field">
+                    <span class="label">历史净投入</span>
+                    <input id="snapshot-balance-contribution" class="input" type="number" step="0.000001" placeholder="未知可留空">
+                </label>
+                <label class="field">
+                    <span class="label">历史已清仓总盈亏</span>
+                    <input id="snapshot-balance-realized" class="input" type="number" step="0.000001">
+                </label>
+                <button id="snapshot-add-balance" class="icon-button snapshot-add-button" type="button" title="添加现金余额" aria-label="添加现金余额">
+                    <i data-lucide="plus"></i>
+                </button>
+            </div>
+            <div class="snapshot-position-list table-wrap">
+                <table class="data-table">
+                    <thead><tr><th>币种</th><th class="text-right">现金</th><th class="text-right">历史净投入</th><th class="text-right">历史已清仓盈亏</th><th></th></tr></thead>
+                    <tbody id="snapshot-balances-body"></tbody>
+                </table>
+            </div>
+
+            <div class="snapshot-add-grid">
+                <label class="field search-box">
+                    <span class="label">持仓标的</span>
+                    <input id="snapshot-asset-search" class="input" type="search" placeholder="代码或名称" autocomplete="off">
+                    <div id="snapshot-search-results" class="search-results" hidden></div>
+                </label>
+                <label class="field">
+                    <span class="label">数量</span>
+                    <input id="snapshot-quantity" class="input" type="number" min="0.000001" step="0.000001">
+                </label>
+                <label class="field">
+                    <span class="label">平均成本</span>
+                    <input id="snapshot-average-cost" class="input" type="number" min="0.000001" step="0.000001">
+                </label>
+                <button id="snapshot-add-position" class="icon-button snapshot-add-button" type="button" title="添加持仓" aria-label="添加持仓">
+                    <i data-lucide="plus"></i>
+                </button>
+            </div>
+            <div id="snapshot-selected-asset" class="muted mono snapshot-selected"></div>
+
+            <div class="snapshot-position-list table-wrap">
+                <table class="data-table">
+                    <thead><tr><th>标的</th><th class="text-right">数量</th><th class="text-right">平均成本</th><th></th></tr></thead>
+                    <tbody id="snapshot-positions-body"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="dialog-footer">
+            <button id="snapshot-delete" class="button danger footer-leading" type="button">删除期初状态</button>
+            <button class="button" type="button" data-close="snapshot-dialog">取消</button>
+            <button class="button primary" type="submit">保存</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog id="trade-dialog">
+    <form id="trade-form">
+        <div class="dialog-header">
+            <h2>记一笔交易</h2>
+            <button class="icon-button" type="button" data-close="trade-dialog" aria-label="关闭"><i data-lucide="x"></i></button>
+        </div>
+        <div class="dialog-body">
+            <div class="field-row">
+                <label class="field">
+                    <span class="label">类型</span>
+                    <select id="trade-type" class="select">
+                        <option value="buy">买入</option><option value="sell">卖出</option>
+                        <option value="deposit">入金</option><option value="withdraw">出金</option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span class="label">日期</span>
+                    <input id="trade-date" class="input" type="date" required>
+                </label>
+            </div>
+
+            <div id="security-fields">
+                <label class="field search-box">
+                    <span class="label">标的</span>
+                    <input id="asset-search" class="input" type="search" placeholder="代码或名称" autocomplete="off">
+                    <input id="asset-symbol" type="hidden">
+                    <div id="asset-search-results" class="search-results" hidden></div>
+                </label>
+                <div id="selected-asset" class="muted mono" style="font-size:11px; margin-top:6px"></div>
+                <div class="field-row" style="margin-top:14px">
+                    <label class="field">
+                        <span class="label">成交价</span>
+                        <input id="trade-price" class="input" type="number" min="0.000001" step="0.000001">
+                    </label>
+                    <label class="field">
+                        <span class="label">数量</span>
+                        <input id="trade-quantity" class="input" type="number" min="0.000001" step="0.000001">
+                    </label>
+                </div>
+                <label class="field" style="display:block; margin-top:14px">
+                    <span class="label">费用</span>
+                    <input id="trade-fee" class="input" type="number" min="0" step="0.000001" value="0">
+                </label>
+            </div>
+
+            <div id="cash-field" class="field-row" hidden>
+                <label class="field">
+                    <span class="label">金额</span>
+                    <input id="cash-amount" class="input" type="number" min="0.000001" step="0.000001">
+                </label>
+                <label class="field">
+                    <span class="label">币种</span>
+                    <input id="trade-currency" class="input mono" maxlength="3" value="CNY">
+                </label>
+            </div>
+            <label class="field">
+                <span class="label">备注</span>
+                <textarea id="trade-note" class="textarea" maxlength="2000"></textarea>
+            </label>
+        </div>
+        <div class="dialog-footer">
+            <button class="button" type="button" data-close="trade-dialog">取消</button>
+            <button class="button primary" type="submit">保存交易</button>
+        </div>
+    </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+    const state = {
+        strategies: [], activeId: null, detail: null, assets: new Map(),
+        editing: false, searchTimer: null, privacy: false,
+        snapshotPositions: [], snapshotBalances: [], snapshotAsset: null,
+        snapshotSearchTimer: null,
+    };
+    const $ = (id) => document.getElementById(id);
+    const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
+    })[c]);
+    const typeLabel = {buy: "买入", sell: "卖出", deposit: "入金", withdraw: "出金"};
+    const signedClass = value => Number(value || 0) >= 0 ? "positive" : "negative";
+
+    function renderStrategies() {
+        $("strategy-list").innerHTML = state.strategies.length ? state.strategies.map(item => `
+            <button type="button" class="strategy-item ${item.id === state.activeId ? "active" : ""}"
+                    data-strategy-id="${item.id}">
+                <strong>${escapeHtml(item.name)}</strong>
+                <small>${escapeHtml(item.description || "暂无描述")}</small>
+            </button>`).join("") :
+            '<div class="empty-state" style="min-height:160px"><div>暂无策略</div></div>';
+        $("strategy-list").querySelectorAll("[data-strategy-id]").forEach(button => {
+            button.addEventListener("click", () => selectStrategy(button.dataset.strategyId));
+        });
+    }
+
+    async function loadStrategies(preferredId = null) {
+        try {
+            state.strategies = await api("/strategies?limit=500");
+            const nextId = preferredId || state.activeId || state.strategies[0]?.id;
+            state.activeId = state.strategies.some(item => item.id === nextId) ? nextId : null;
+            renderStrategies();
+            if (state.activeId) await selectStrategy(state.activeId);
+            else showDetail(false);
+        } catch (error) { showToast(error.message, "error"); }
+    }
+
+    async function selectStrategy(id) {
+        state.activeId = id;
+        renderStrategies();
+        try {
+            state.detail = await api("/strategies/" + id);
+            for (const position of state.detail.positions) {
+                state.assets.set(position.asset.symbol, position.asset);
+            }
+            for (const position of state.detail.opening_snapshot?.positions || []) {
+                state.assets.set(position.asset.symbol, position.asset);
+            }
+            renderDetail();
+            showDetail(true);
+        } catch (error) { showToast(error.message, "error"); }
+    }
+
+    function showDetail(visible) {
+        $("strategy-empty").hidden = visible;
+        $("strategy-detail").hidden = !visible;
+        $("edit-strategy").disabled = !visible;
+        $("opening-snapshot").disabled = !visible;
+        $("add-trade").disabled = !visible;
+        $("strategy-subtitle").textContent = visible
+            ? `${state.detail.name} · 折算 ${state.detail.summary.reporting_currency}${state.detail.opening_snapshot ? ` · 期初 ${state.detail.opening_snapshot.snapshot_date}` : ""}`
+            : "组合、交易与持仓";
+    }
+
+    function renderDetail() {
+        const detail = state.detail;
+        const summary = detail.summary;
+        const currency = summary.reporting_currency;
+        const hasContribution = summary.net_contribution !== null;
+        const profitRate = hasContribution && Number(summary.net_contribution)
+            ? Number(summary.total_profit) / Number(summary.net_contribution) * 100 : 0;
+        const positionRate = Number(summary.total_value)
+            ? Number(summary.market_value) / Number(summary.total_value) * 100 : 0;
+        $("metric-total").textContent = money(summary.total_value, currency);
+        $("metric-principal").textContent = hasContribution ? money(summary.net_contribution, currency) : "--";
+        $("metric-cash").textContent = money(summary.cash_balance, currency);
+        $("metric-cash").title = summary.cash_balances
+            .map(item => `${item.currency} ${number(item.amount, 6)}`).join("\n");
+        $("metric-market").textContent = money(summary.market_value, currency);
+        $("metric-profit").textContent = money(summary.total_profit, currency);
+        $("metric-profit").className = signedClass(summary.total_profit);
+        $("metric-ratio").textContent = `${hasContribution ? `${profitRate >= 0 ? "+" : ""}${profitRate.toFixed(2)}%` : "--"} / ${positionRate.toFixed(1)}%`;
+        $("metric-ratio").className = hasContribution ? signedClass(profitRate) : "";
+        $("metric-win-rate").textContent = summary.win_rate == null
+            ? "--" : `${(Number(summary.win_rate) * 100).toFixed(2)}%`;
+        $("metric-win-rate").title = summary.completed_position_count
+            ? `${summary.winning_position_count} / ${summary.completed_position_count} 个已清仓持仓周期盈利`
+            : "暂无已清仓持仓周期";
+        $("metric-profit-loss-ratio").textContent = summary.profit_loss_ratio == null
+            ? "--" : Number(summary.profit_loss_ratio).toFixed(2);
+        renderPositions();
+        renderTrades();
+    }
+
+    function renderPositions() {
+        const rows = state.detail.positions;
+        $("positions-body").innerHTML = rows.length ? rows.map(position => `
+            <tr>
+                <td><a href="/market?symbol=${encodeURIComponent(position.asset.symbol)}">
+                    <div class="asset-name">${escapeHtml(position.asset.name)}</div>
+                    <div class="asset-code mono">${escapeHtml(position.asset.symbol)}</div>
+                </a></td>
+                <td class="text-right sensitive">${number(position.quantity, 6)}</td>
+                <td class="text-right sensitive">${money(position.average_cost, position.asset.currency)}</td>
+                <td class="text-right sensitive">${position.latest_price == null ? "--" : money(position.latest_price, position.asset.currency)}
+                    <div class="asset-code">${position.latest_price_date || ""}</div></td>
+                <td class="text-right sensitive">${position.market_value_report == null ? "--" : money(position.market_value_report, state.detail.summary.reporting_currency)}</td>
+                <td class="text-right sensitive ${signedClass(position.realized_profit_report)}">${money(position.realized_profit_report, state.detail.summary.reporting_currency)}</td>
+                <td class="text-right sensitive ${signedClass(position.unrealized_profit_report)}">${position.unrealized_profit_report == null ? "--" : money(position.unrealized_profit_report, state.detail.summary.reporting_currency)}</td>
+            </tr>`).join("") :
+            '<tr><td colspan="7"><div class="empty-state" style="min-height:180px">暂无持仓</div></td></tr>';
+    }
+
+    function renderTrades() {
+        const rows = state.detail.trades;
+        $("trades-body").innerHTML = rows.length ? rows.map(trade => {
+            const asset = state.assets.get(trade.asset_symbol);
+            return `<tr>
+                <td class="mono">${trade.trade_date}</td>
+                <td><span class="badge ${trade.type}">${typeLabel[trade.type]}</span></td>
+                <td>${trade.asset_symbol ? `<div class="asset-name">${escapeHtml(asset?.name || trade.asset_symbol)}</div><div class="asset-code mono">${escapeHtml(trade.asset_symbol)}</div>` : "--"}</td>
+                <td class="mono muted">${escapeHtml(trade.position_id || "--")}</td>
+                <td class="text-right sensitive">${money(trade.price, trade.currency)}</td>
+                <td class="text-right sensitive">${Number(trade.quantity) ? number(trade.quantity, 6) : "--"}</td>
+                <td class="text-right sensitive">${Number(trade.fee) ? money(trade.fee, trade.currency) : "--"}</td>
+                <td class="muted">${escapeHtml(trade.note || "--")}</td>
+            </tr>`;
+        }).join("") : '<tr><td colspan="8"><div class="empty-state" style="min-height:180px">暂无交易</div></td></tr>';
+    }
+
+    function openStrategyDialog(editing) {
+        state.editing = editing;
+        $("strategy-dialog-title").textContent = editing ? "编辑策略" : "创建策略";
+        $("strategy-name").value = editing ? state.detail.name : "";
+        $("strategy-description").value = editing ? state.detail.description || "" : "";
+        $("strategy-dialog").showModal();
+    }
+
+    async function saveStrategy(event) {
+        event.preventDefault();
+        const payload = {
+            name: $("strategy-name").value.trim(),
+            description: $("strategy-description").value.trim() || null,
+        };
+        try {
+            let saved;
+            if (state.editing) {
+                saved = await api("/strategies/" + state.activeId, {
+                    method: "PATCH", body: JSON.stringify(payload),
+                });
+            } else {
+                saved = await api("/strategies", {
+                    method: "POST",
+                    body: JSON.stringify(payload),
+                });
+            }
+            $("strategy-dialog").close();
+            showToast("策略已保存", "success");
+            await loadStrategies(saved.id);
+        } catch (error) { showToast(error.message, "error"); }
+    }
+
+    function openTradeDialog() {
+        $("trade-form").reset();
+        $("trade-type").value = "buy";
+        const today = new Date().toLocaleDateString("en-CA", {timeZone: "Asia/Shanghai"});
+        const minimum = state.detail.opening_snapshot
+            ? nextDate(state.detail.opening_snapshot.snapshot_date) : "";
+        $("trade-date").min = minimum;
+        $("trade-date").value = minimum && minimum > today ? minimum : today;
+        $("trade-fee").value = "0";
+        $("trade-currency").value = state.detail.summary.reporting_currency;
+        $("asset-symbol").value = "";
+        $("selected-asset").textContent = "";
+        toggleTradeFields();
+        $("trade-dialog").showModal();
+    }
+
+    function nextDate(value) {
+        const result = new Date(value + "T00:00:00Z");
+        result.setUTCDate(result.getUTCDate() + 1);
+        return result.toISOString().slice(0, 10);
+    }
+
+    function openSnapshotDialog() {
+        const snapshot = state.detail.opening_snapshot;
+        $("snapshot-date").value = snapshot?.snapshot_date
+            || new Date().toLocaleDateString("en-CA", {timeZone: "Asia/Shanghai"});
+        state.snapshotBalances = (snapshot?.balances || []).map(balance => ({...balance}));
+        state.snapshotPositions = (snapshot?.positions || []).map(position => ({
+            asset: position.asset,
+            quantity: position.quantity,
+            average_cost: position.average_cost,
+        }));
+        resetSnapshotBalanceInputs();
+        resetSnapshotPositionInputs();
+        renderSnapshotBalances();
+        renderSnapshotPositions();
+        $("snapshot-delete").hidden = !snapshot;
+        $("snapshot-dialog").showModal();
+    }
+
+    function resetSnapshotPositionInputs() {
+        state.snapshotAsset = null;
+        $("snapshot-asset-search").value = "";
+        $("snapshot-quantity").value = "";
+        $("snapshot-average-cost").value = "";
+        $("snapshot-selected-asset").textContent = "";
+        $("snapshot-search-results").hidden = true;
+    }
+
+    function resetSnapshotBalanceInputs() {
+        $("snapshot-balance-currency").value = state.detail.summary.reporting_currency;
+        $("snapshot-balance-cash").value = "";
+        $("snapshot-balance-contribution").value = "";
+        $("snapshot-balance-realized").value = "";
+    }
+
+    function addSnapshotBalance() {
+        const currency = $("snapshot-balance-currency").value.trim().toUpperCase();
+        if (!/^[A-Z]{3}$/.test(currency)) return showToast("币种必须是三位代码", "error");
+        const balance = {
+            currency,
+            cash: $("snapshot-balance-cash").value || "0",
+            historical_net_contribution: $("snapshot-balance-contribution").value || null,
+            historical_realized_profit: $("snapshot-balance-realized").value || "0",
+        };
+        const index = state.snapshotBalances.findIndex(item => item.currency === currency);
+        if (index >= 0) state.snapshotBalances[index] = balance;
+        else state.snapshotBalances.push(balance);
+        resetSnapshotBalanceInputs();
+        renderSnapshotBalances();
+    }
+
+    function renderSnapshotBalances() {
+        $("snapshot-balances-body").innerHTML = state.snapshotBalances.length
+            ? state.snapshotBalances.map((balance, index) => `<tr>
+                <td class="mono">${escapeHtml(balance.currency)}</td>
+                <td class="text-right sensitive">${number(balance.cash, 6)}</td>
+                <td class="text-right sensitive">${balance.historical_net_contribution == null ? "--" : number(balance.historical_net_contribution, 6)}</td>
+                <td class="text-right sensitive ${signedClass(balance.historical_realized_profit)}">${number(balance.historical_realized_profit, 6)}</td>
+                <td class="text-right"><button class="icon-button snapshot-remove" type="button" data-balance-index="${index}" title="移除余额" aria-label="移除余额"><i data-lucide="trash-2"></i></button></td>
+            </tr>`).join("")
+            : '<tr><td colspan="5"><div class="empty-state snapshot-empty">暂无现金余额</div></td></tr>';
+        $("snapshot-balances-body").querySelectorAll("[data-balance-index]").forEach(button => {
+            button.addEventListener("click", () => {
+                state.snapshotBalances.splice(Number(button.dataset.balanceIndex), 1);
+                renderSnapshotBalances();
+            });
+        });
+        lucide.createIcons();
+    }
+
+    async function searchSnapshotAssets() {
+        const query = $("snapshot-asset-search").value.trim();
+        state.snapshotAsset = null;
+        $("snapshot-selected-asset").textContent = "";
+        if (!query) {
+            $("snapshot-search-results").hidden = true;
+            return;
+        }
+        try {
+            const assets = await api("/assets/search?q=" + encodeURIComponent(query) + "&limit=12");
+            $("snapshot-search-results").innerHTML = assets.map(asset => `
+                <button class="search-option" type="button" data-snapshot-symbol="${escapeHtml(asset.symbol)}">
+                    <strong>${escapeHtml(asset.name)}</strong><span class="mono muted">${escapeHtml(asset.symbol)}</span>
+                </button>`).join("");
+            $("snapshot-search-results").hidden = !assets.length;
+            $("snapshot-search-results").querySelectorAll("[data-snapshot-symbol]").forEach(button => {
+                button.addEventListener("click", () => {
+                    const asset = assets.find(item => item.symbol === button.dataset.snapshotSymbol);
+                    state.snapshotAsset = asset;
+                    state.assets.set(asset.symbol, asset);
+                    $("snapshot-asset-search").value = asset.name;
+                    $("snapshot-selected-asset").textContent = `${asset.symbol} · ${asset.currency}`;
+                    $("snapshot-search-results").hidden = true;
+                    $("snapshot-quantity").focus();
+                });
+            });
+        } catch (error) { showToast(error.message, "error"); }
+    }
+
+    function addSnapshotPosition() {
+        const quantity = $("snapshot-quantity").value;
+        const averageCost = $("snapshot-average-cost").value;
+        if (!state.snapshotAsset) return showToast("请从搜索结果中选择标的", "error");
+        if (!(Number(quantity) > 0) || !(Number(averageCost) > 0)) {
+            return showToast("数量和平均成本必须大于 0", "error");
+        }
+        const position = {asset: state.snapshotAsset, quantity, average_cost: averageCost};
+        const index = state.snapshotPositions.findIndex(item => item.asset.symbol === state.snapshotAsset.symbol);
+        if (index >= 0) state.snapshotPositions[index] = position;
+        else state.snapshotPositions.push(position);
+        resetSnapshotPositionInputs();
+        renderSnapshotPositions();
+    }
+
+    function renderSnapshotPositions() {
+        $("snapshot-positions-body").innerHTML = state.snapshotPositions.length
+            ? state.snapshotPositions.map((position, index) => `<tr>
+                <td><div class="asset-name">${escapeHtml(position.asset.name)}</div><div class="asset-code mono">${escapeHtml(position.asset.symbol)}</div></td>
+                <td class="text-right sensitive">${number(position.quantity, 6)}</td>
+                <td class="text-right sensitive">${number(position.average_cost, 6)}</td>
+                <td class="text-right"><button class="icon-button snapshot-remove" type="button" data-position-index="${index}" title="移除持仓" aria-label="移除持仓"><i data-lucide="trash-2"></i></button></td>
+            </tr>`).join("")
+            : '<tr><td colspan="4"><div class="empty-state snapshot-empty">暂无持仓</div></td></tr>';
+        $("snapshot-positions-body").querySelectorAll("[data-position-index]").forEach(button => {
+            button.addEventListener("click", () => {
+                state.snapshotPositions.splice(Number(button.dataset.positionIndex), 1);
+                renderSnapshotPositions();
+            });
+        });
+        lucide.createIcons();
+    }
+
+    async function saveSnapshot(event) {
+        event.preventDefault();
+        const payload = {
+            snapshot_date: $("snapshot-date").value,
+            balances: state.snapshotBalances.map(balance => ({...balance})),
+            positions: state.snapshotPositions.map(position => ({
+                asset_symbol: position.asset.symbol,
+                quantity: String(position.quantity),
+                average_cost: String(position.average_cost),
+            })),
+        };
+        try {
+            await api("/strategies/" + state.activeId + "/opening-snapshot", {
+                method: "PUT", body: JSON.stringify(payload),
+            });
+            $("snapshot-dialog").close();
+            showToast("期初状态已保存", "success");
+            await selectStrategy(state.activeId);
+        } catch (error) { showToast(error.message, "error"); }
+    }
+
+    async function deleteSnapshot() {
+        if (!window.confirm("确定删除期初状态？")) return;
+        try {
+            await api("/strategies/" + state.activeId + "/opening-snapshot", {method: "DELETE"});
+            $("snapshot-dialog").close();
+            showToast("期初状态已删除", "success");
+            await selectStrategy(state.activeId);
+        } catch (error) { showToast(error.message, "error"); }
+    }
+
+    function toggleTradeFields() {
+        const cash = ["deposit", "withdraw"].includes($("trade-type").value);
+        $("security-fields").hidden = cash;
+        $("cash-field").hidden = !cash;
+        $("trade-price").required = !cash;
+        $("trade-quantity").required = !cash;
+        $("asset-search").required = !cash;
+        $("cash-amount").required = cash;
+        $("trade-currency").required = cash;
+    }
+
+    async function searchAssets() {
+        const query = $("asset-search").value.trim();
+        $("asset-symbol").value = "";
+        $("selected-asset").textContent = "";
+        if (!query) {
+            $("asset-search-results").hidden = true;
+            return;
+        }
+        try {
+            let assets;
+            if ($("trade-type").value === "sell" && state.detail.positions.length) {
+                const held = state.detail.positions.map(item => item.asset);
+                assets = held.filter(asset =>
+                    `${asset.name} ${asset.symbol}`.toLowerCase().includes(query.toLowerCase())
+                );
+            } else {
+                assets = await api("/assets/search?q=" + encodeURIComponent(query) + "&limit=12");
+            }
+            $("asset-search-results").innerHTML = assets.map(asset => `
+                <button class="search-option" type="button" data-asset-symbol="${escapeHtml(asset.symbol)}">
+                    <strong>${escapeHtml(asset.name)}</strong><span class="mono muted">${escapeHtml(asset.symbol)}</span>
+                </button>`).join("");
+            $("asset-search-results").hidden = !assets.length;
+            $("asset-search-results").querySelectorAll("[data-asset-symbol]").forEach(button => {
+                button.addEventListener("click", () => {
+                    const asset = assets.find(item => item.symbol === button.dataset.assetSymbol);
+                    state.assets.set(asset.symbol, asset);
+                    $("asset-symbol").value = asset.symbol;
+                    $("asset-search").value = asset.name;
+                    $("selected-asset").textContent = `${asset.symbol} · ${asset.currency}`;
+                    $("asset-search-results").hidden = true;
+                });
+            });
+        } catch (error) { showToast(error.message, "error"); }
+    }
+
+    async function saveTrade(event) {
+        event.preventDefault();
+        const type = $("trade-type").value;
+        const cash = ["deposit", "withdraw"].includes(type);
+        if (!cash && !$("asset-symbol").value) {
+            showToast("请从搜索结果中选择标的", "error");
+            return;
+        }
+        const payload = {
+            type,
+            trade_date: $("trade-date").value,
+            price: cash ? $("cash-amount").value : $("trade-price").value,
+            quantity: cash ? "0" : $("trade-quantity").value,
+            fee: cash ? "0" : $("trade-fee").value || "0",
+            asset_symbol: cash ? null : $("asset-symbol").value,
+            currency: cash ? $("trade-currency").value.trim().toUpperCase() : null,
+            note: $("trade-note").value.trim() || null,
+            idempotency_key: crypto.randomUUID?.() || String(Date.now()),
+        };
+        try {
+            await api("/strategies/" + state.activeId + "/trades", {
+                method: "POST", body: JSON.stringify(payload),
+            });
+            $("trade-dialog").close();
+            showToast("交易已记录", "success");
+            await selectStrategy(state.activeId);
+        } catch (error) { showToast(error.message, "error"); }
+    }
+
+    async function syncPositions() {
+        const symbols = state.detail?.positions.map(position => position.asset.symbol) || [];
+        if (!symbols.length) return showToast("当前没有持仓");
+        $("sync-positions").disabled = true;
+        try {
+            const results = await Promise.allSettled(symbols.map(symbol =>
+                api("/assets/" + encodeURIComponent(symbol) + "/sync", {method: "POST"})
+            ));
+            const failed = results.filter(result => result.status === "rejected").length;
+            showToast(failed ? `${failed} 个标的更新失败` : "持仓行情已更新", failed ? "error" : "success");
+            await selectStrategy(state.activeId);
+        } finally { $("sync-positions").disabled = false; }
+    }
+
+    document.querySelectorAll("[data-close]").forEach(button => {
+        button.addEventListener("click", () => $(button.dataset.close).close());
+    });
+    document.querySelectorAll("[data-tab]").forEach(button => {
+        button.addEventListener("click", () => {
+            document.querySelectorAll("[data-tab]").forEach(item => item.classList.toggle("active", item === button));
+            $("positions-tab").hidden = button.dataset.tab !== "positions";
+            $("trades-tab").hidden = button.dataset.tab !== "trades";
+        });
+    });
+    $("new-strategy").addEventListener("click", () => openStrategyDialog(false));
+    $("empty-create").addEventListener("click", () => openStrategyDialog(false));
+    $("edit-strategy").addEventListener("click", () => openStrategyDialog(true));
+    $("opening-snapshot").addEventListener("click", openSnapshotDialog);
+    $("add-trade").addEventListener("click", openTradeDialog);
+    $("strategy-form").addEventListener("submit", saveStrategy);
+    $("snapshot-form").addEventListener("submit", saveSnapshot);
+    $("snapshot-add-balance").addEventListener("click", addSnapshotBalance);
+    $("snapshot-add-position").addEventListener("click", addSnapshotPosition);
+    $("snapshot-delete").addEventListener("click", deleteSnapshot);
+    $("trade-form").addEventListener("submit", saveTrade);
+    $("trade-type").addEventListener("change", toggleTradeFields);
+    $("asset-search").addEventListener("input", () => {
+        clearTimeout(state.searchTimer);
+        state.searchTimer = setTimeout(searchAssets, 280);
+    });
+    $("snapshot-asset-search").addEventListener("input", () => {
+        clearTimeout(state.snapshotSearchTimer);
+        state.snapshotSearchTimer = setTimeout(searchSnapshotAssets, 280);
+    });
+    $("sync-positions").addEventListener("click", syncPositions);
+    $("privacy-toggle").addEventListener("click", () => {
+        state.privacy = !state.privacy;
+        $("strategy-detail").classList.toggle("privacy", state.privacy);
+        $("privacy-toggle").innerHTML = `<i data-lucide="${state.privacy ? "eye-off" : "eye"}"></i>`;
+        lucide.createIcons();
+    });
+    loadStrategies();
+})();
+</script>
+{% endblock %}
