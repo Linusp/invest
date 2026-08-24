@@ -8,7 +8,10 @@ import pytest
 from invest_service.config import Settings
 from invest_service.models import AssetCategory
 from invest_service.providers import (
+    AkshareFallbackProvider,
+    EastMoneyProvider,
     IndexFallbackProvider,
+    PrioritizedMarketProvider,
     ProviderAsset,
     ProviderError,
     TushareProvider,
@@ -33,7 +36,7 @@ def test_searches_tushare_catalogs_and_caches_them():
         if api_name == "stock_basic":
             return _response(
                 body["fields"],
-                [["600000.SH", "600000", "浦发银行"]],
+                [["600000.SH", "600000", "浦发银行", "银行", "主板"]],
             )
         if api_name == "etf_basic":
             return _response(
@@ -64,7 +67,9 @@ def test_searches_tushare_catalogs_and_caches_them():
         "index_basic",
     ]
 
-    assert provider.search("浦发", category=AssetCategory.STOCK)[0].symbol == "600000.SH"
+    stock = provider.search("浦发", category=AssetCategory.STOCK)[0]
+    assert stock.symbol == "600000.SH"
+    assert stock.default_tags == ("银行",)
     assert calls.count("stock_basic") == 1
 
 
@@ -198,7 +203,7 @@ def test_all_category_search_keeps_results_from_available_catalogs():
     assert [item.symbol for item in matches] == ["600000.SH"]
 
 
-def test_factory_defaults_to_tushare():
+def test_factory_defaults_to_free_first_with_tushare_last():
     settings = Settings(
         market_provider="tushare",
         tushare_token="token",
@@ -207,6 +212,37 @@ def test_factory_defaults_to_tushare():
 
     provider = make_market_provider(settings)
 
+    assert isinstance(provider, PrioritizedMarketProvider)
+    assert [type(item) for item in provider.search_providers] == [
+        EastMoneyProvider,
+        AkshareFallbackProvider,
+        TushareProvider,
+    ]
+    assert [type(item) for item in provider.history_providers[AssetCategory.STOCK]] == [
+        AkshareFallbackProvider,
+        EastMoneyProvider,
+        TushareProvider,
+    ]
+    assert [type(item) for item in provider.history_providers[AssetCategory.INDEX]] == [
+        AkshareFallbackProvider,
+        TushareProvider,
+    ]
+    assert [type(item) for item in provider.history_providers[AssetCategory.ETF]] == [
+        AkshareFallbackProvider,
+        TushareProvider,
+    ]
+    assert provider.history_providers[AssetCategory.STOCK][-1].token == "token"
+
+
+def test_factory_can_keep_configured_provider_first_order():
+    settings = Settings(
+        market_provider="tushare",
+        market_provider_order="configured_first",
+        tushare_token="token",
+        auto_update_enabled=False,
+    )
+
+    provider = make_market_provider(settings)
+
     assert isinstance(provider, IndexFallbackProvider)
     assert isinstance(provider.primary, TushareProvider)
-    assert provider.primary.token == "token"

@@ -1,3 +1,5 @@
+import json
+import subprocess
 from datetime import date
 from decimal import Decimal
 
@@ -25,6 +27,13 @@ ETF = ProviderAsset(
     category=AssetCategory.ETF,
     provider_id="510300.SH",
 )
+STOCK = ProviderAsset(
+    symbol="600000.SH",
+    code="600000",
+    name="浦发银行",
+    category=AssetCategory.STOCK,
+    provider_id="600000.SH",
+)
 
 
 class FakeFrame:
@@ -42,8 +51,8 @@ class FakeAkshare:
     def __init__(self):
         self.calls = []
 
-    def stock_zh_index_daily_tx(self, symbol):
-        self.calls.append(("tencent", symbol))
+    def stock_zh_index_daily_tx(self, symbol, start_date, end_date):
+        self.calls.append(("tencent", symbol, start_date, end_date))
         raise RuntimeError("Tencent unavailable")
 
     def stock_zh_index_daily(self, symbol):
@@ -76,12 +85,99 @@ def test_akshare_index_tries_tencent_then_sina_and_normalizes_rows():
 
     bars = provider.history(INDEX, date(2026, 7, 9), date(2026, 7, 10))
 
-    assert api.calls == [("tencent", "sh000300"), ("sina", "sh000300")]
+    assert api.calls == [
+        ("tencent", "sh000300", "20260709", "20260710"),
+        ("sina", "sh000300"),
+    ]
     assert [bar.trade_date for bar in bars] == [date(2026, 7, 9), date(2026, 7, 10)]
     assert bars[-1].previous_close == Decimal("4000")
     assert bars[-1].change == Decimal("20")
     assert bars[-1].change_percent == Decimal("0.500")
     assert bars[-1].source == "akshare"
+
+
+def test_real_akshare_call_is_isolated_with_date_range_and_timeout(monkeypatch):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout='[{"date":"2026-07-10","close":4020}]',
+            stderr="",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    provider = AkshareFallbackProvider(call_timeout_seconds=7)
+
+    bars = provider.history(INDEX, date(2026, 7, 9), date(2026, 7, 10))
+
+    command, options = calls[0]
+    assert command[-1] == "invest_service.providers.akshare_runner"
+    assert options["timeout"] == 7
+    assert json.loads(options["input"]) == {
+        "function": "stock_zh_index_daily_tx",
+        "kwargs": {
+            "symbol": "sh000300",
+            "start_date": "20260709",
+            "end_date": "20260710",
+        },
+    }
+    assert bars[0].trade_date == date(2026, 7, 10)
+
+
+class FakeStockAkshare:
+    def __init__(self, tencent_error=False):
+        self.tencent_error = tencent_error
+        self.calls = []
+
+    def stock_zh_a_hist_tx(self, **kwargs):
+        self.calls.append(("tencent", kwargs))
+        if self.tencent_error:
+            raise RuntimeError("Tencent unavailable")
+        return FakeFrame([{"date": "2026-07-10", "close": 10.5}])
+
+    def stock_zh_a_daily(self, **kwargs):
+        self.calls.append(("sina", kwargs))
+        return FakeFrame([{"date": "2026-07-10", "close": 10.5}])
+
+
+def test_akshare_stock_uses_tencent_with_bounded_date_range():
+    api = FakeStockAkshare()
+
+    bars = AkshareFallbackProvider(api).history(
+        STOCK,
+        date(2026, 7, 9),
+        date(2026, 7, 10),
+    )
+
+    assert len(bars) == 1
+    assert api.calls == [
+        (
+            "tencent",
+            {
+                "symbol": "sh600000",
+                "start_date": "20260709",
+                "end_date": "20260710",
+                "adjust": "",
+                "timeout": 15,
+            },
+        )
+    ]
+
+
+def test_akshare_stock_falls_back_from_tencent_to_sina():
+    api = FakeStockAkshare(tencent_error=True)
+
+    bars = AkshareFallbackProvider(api).history(
+        STOCK,
+        date(2026, 7, 9),
+        date(2026, 7, 10),
+    )
+
+    assert len(bars) == 1
+    assert [source for source, _ in api.calls] == ["tencent", "sina"]
 
 
 class FakeEtfAkshare:

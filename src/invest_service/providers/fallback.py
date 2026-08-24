@@ -1,7 +1,112 @@
+import logging
 from datetime import date
+from typing import Mapping, Sequence
 
 from ..models import AssetCategory
 from .base import MarketDataProvider, ProviderAsset, ProviderBar, ProviderError
+
+logger = logging.getLogger(__name__)
+
+
+class PrioritizedMarketProvider(MarketDataProvider):
+    """Try provider chains in order and stop before paid fallbacks when possible."""
+
+    name = "prioritized"
+
+    def __init__(
+        self,
+        search_providers: Sequence[MarketDataProvider],
+        history_providers: Mapping[
+            AssetCategory,
+            Sequence[MarketDataProvider],
+        ],
+    ):
+        self.search_providers = tuple(search_providers)
+        self.history_providers = {
+            category: tuple(providers)
+            for category, providers in history_providers.items()
+        }
+
+    def search(
+        self,
+        query: str,
+        limit: int = 15,
+        category: AssetCategory | None = None,
+    ) -> list[ProviderAsset]:
+        errors: list[str] = []
+        completed_without_error = False
+        for position, provider in enumerate(self.search_providers):
+            try:
+                results = provider.search(query, limit, category)
+                completed_without_error = True
+            except ProviderError as exc:
+                errors.append(f"{provider.name}: {exc}")
+                if position + 1 < len(self.search_providers):
+                    logger.info(
+                        "Market search provider %s failed; trying %s: %s",
+                        provider.name,
+                        self.search_providers[position + 1].name,
+                        exc,
+                    )
+                continue
+            if results:
+                return results[:limit]
+            if position + 1 < len(self.search_providers):
+                logger.info(
+                    "Market search provider %s returned no results; trying %s",
+                    provider.name,
+                    self.search_providers[position + 1].name,
+                )
+        if completed_without_error:
+            return []
+        raise ProviderError(
+            f"All market search providers failed: {'; '.join(errors)}"
+        )
+
+    def history(
+        self,
+        asset: ProviderAsset,
+        start_date: date,
+        end_date: date,
+    ) -> list[ProviderBar]:
+        providers = self.history_providers.get(asset.category, ())
+        if not providers:
+            raise ProviderError(
+                f"No market history provider is configured for {asset.category.value}"
+            )
+
+        errors: list[str] = []
+        completed_without_error = False
+        for position, provider in enumerate(providers):
+            try:
+                bars = provider.history(asset, start_date, end_date)
+                completed_without_error = True
+            except ProviderError as exc:
+                errors.append(f"{provider.name}: {exc}")
+                if position + 1 < len(providers):
+                    logger.info(
+                        "Market history provider %s failed for %s; trying %s: %s",
+                        provider.name,
+                        asset.symbol,
+                        providers[position + 1].name,
+                        exc,
+                    )
+                continue
+            if bars:
+                return bars
+            if position + 1 < len(providers):
+                logger.info(
+                    "Market history provider %s returned no rows for %s; trying %s",
+                    provider.name,
+                    asset.symbol,
+                    providers[position + 1].name,
+                )
+        if completed_without_error:
+            return []
+        raise ProviderError(
+            f"All market history providers failed for {asset.symbol}: "
+            f"{'; '.join(errors)}"
+        )
 
 
 class MarketFallbackProvider(MarketDataProvider):

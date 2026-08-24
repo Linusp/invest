@@ -3,7 +3,11 @@ from .base import MarketDataProvider, ProviderAsset, ProviderBar, ProviderError
 from .eastmoney import EastMoneyProvider
 from .exchange_rates import EcbExchangeRateProvider, ProviderExchangeRates
 from .factory import make_market_provider
-from .fallback import IndexFallbackProvider, MarketFallbackProvider
+from .fallback import (
+    IndexFallbackProvider,
+    MarketFallbackProvider,
+    PrioritizedMarketProvider,
+)
 from .tushare import TushareProvider
 
 __all__ = [
@@ -13,6 +17,7 @@ __all__ = [
     "AkshareFallbackProvider",
     "IndexFallbackProvider",
     "MarketFallbackProvider",
+    "PrioritizedMarketProvider",
     "MarketDataProvider",
     "ProviderAsset",
     "ProviderBar",

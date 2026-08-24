@@ -5,7 +5,14 @@ from typing import Any
 import httpx
 
 from ..models import AssetCategory
-from .base import MarketDataProvider, ProviderAsset, ProviderBar, ProviderError, infer_currency
+from .base import (
+    MarketDataProvider,
+    ProviderAsset,
+    ProviderBar,
+    ProviderError,
+    infer_currency,
+    infer_default_tags,
+)
 
 
 def _decimal(value: Any) -> Decimal | None:
@@ -21,6 +28,7 @@ class EastMoneyProvider(MarketDataProvider):
     name = "eastmoney"
     SEARCH_URL = "https://searchapi.eastmoney.com/api/suggest/get"
     HISTORY_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+    MARKET_IDS = {"0", "1", "90", "105", "106", "107", "116"}
 
     def __init__(self, token: str, client: httpx.Client | None = None):
         self.token = token
@@ -93,6 +101,21 @@ class EastMoneyProvider(MarketDataProvider):
             if category is not None and category != item_category:
                 continue
             symbol = self._canonical_symbol(code, provider_id, item)
+            industry = next(
+                (
+                    str(item.get(key) or "").strip()
+                    for key in (
+                        "IndustryName",
+                        "industryName",
+                        "Industry",
+                        "industry",
+                        "HYName",
+                        "hyName",
+                    )
+                    if item.get(key)
+                ),
+                None,
+            )
             found.append(
                 ProviderAsset(
                     symbol=symbol,
@@ -101,6 +124,7 @@ class EastMoneyProvider(MarketDataProvider):
                     category=item_category,
                     provider_id=provider_id,
                     currency=infer_currency(symbol),
+                    default_tags=infer_default_tags(symbol, item_category, industry),
                 )
             )
         return found[:limit]
@@ -116,7 +140,7 @@ class EastMoneyProvider(MarketDataProvider):
                     "beg": start_date.strftime("%Y%m%d"),
                     "end": end_date.strftime("%Y%m%d"),
                     "rtntype": "6",
-                    "secid": asset.provider_id,
+                    "secid": self._history_provider_id(asset),
                     "klt": "101",
                     "fqt": "1",
                 },
@@ -152,3 +176,19 @@ class EastMoneyProvider(MarketDataProvider):
                 )
             )
         return result
+
+    @classmethod
+    def _history_provider_id(cls, asset: ProviderAsset) -> str:
+        provider_id = asset.provider_id.strip()
+        market_id, separator, _ = provider_id.partition(".")
+        if separator and market_id in cls.MARKET_IDS:
+            return provider_id
+
+        code, _, suffix = asset.symbol.strip().upper().partition(".")
+        inferred_market = {
+            "SH": "1",
+            "SZ": "0",
+            "BJ": "0",
+            "HK": "116",
+        }.get(suffix)
+        return f"{inferred_market}.{code}" if inferred_market else provider_id

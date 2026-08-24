@@ -6,7 +6,13 @@ from typing import Any
 import httpx
 
 from ..models import AssetCategory
-from .base import MarketDataProvider, ProviderAsset, ProviderBar, ProviderError
+from .base import (
+    MarketDataProvider,
+    ProviderAsset,
+    ProviderBar,
+    ProviderError,
+    infer_default_tags,
+)
 
 
 def _decimal(value: Any) -> Decimal | None:
@@ -148,7 +154,7 @@ class TushareProvider(MarketDataProvider):
         rows = self._query(
             "stock_basic",
             {"exchange": "", "list_status": "L"},
-            "ts_code,symbol,name",
+            "ts_code,symbol,name,industry,market",
         )
         return self._assets_from_rows(rows, AssetCategory.STOCK, "name")
 
@@ -189,6 +195,7 @@ class TushareProvider(MarketDataProvider):
                         name=name,
                         category=AssetCategory.ETF,
                         provider_id=ts_code,
+                        default_tags=infer_default_tags(ts_code, AssetCategory.ETF),
                     )
                 )
         return assets
@@ -236,6 +243,11 @@ class TushareProvider(MarketDataProvider):
                         name=name,
                         category=category,
                         provider_id=ts_code,
+                        default_tags=infer_default_tags(
+                            ts_code,
+                            category,
+                            str(row.get("industry") or "").strip() or None,
+                        ),
                     )
                 )
         return assets

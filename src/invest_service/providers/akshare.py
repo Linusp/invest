@@ -1,3 +1,6 @@
+import json
+import subprocess
+import sys
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from time import monotonic
@@ -29,6 +32,22 @@ def _date(value: Any) -> date | None:
         return None
 
 
+class _RecordsFrame:
+    """Small DataFrame-compatible wrapper for isolated AkShare results."""
+
+    def __init__(self, records: list[dict[str, Any]]):
+        self.records = records
+
+    @property
+    def empty(self) -> bool:
+        return not self.records
+
+    def to_dict(self, orient: str) -> list[dict[str, Any]]:
+        if orient != "records":
+            raise ValueError("only records orientation is supported")
+        return self.records
+
+
 class AkshareFallbackProvider(MarketDataProvider):
     name = "akshare"
 
@@ -37,11 +56,13 @@ class AkshareFallbackProvider(MarketDataProvider):
         api: Any | None = None,
         catalog_ttl_seconds: int = 3600,
         etf_history_provider: MarketDataProvider | None = None,
+        call_timeout_seconds: int = 30,
     ):
         self._api = api
         self.catalog_ttl_seconds = catalog_ttl_seconds
         self._etf_catalog_cache: tuple[float, list[ProviderAsset]] | None = None
         self._etf_history_provider = etf_history_provider
+        self.call_timeout_seconds = call_timeout_seconds
 
     @property
     def api(self):
@@ -54,6 +75,44 @@ class AkshareFallbackProvider(MarketDataProvider):
                 ) from exc
             self._api = akshare
         return self._api
+
+    def _fetch(self, function_name: str, **kwargs: Any) -> Any:
+        if self._api is not None:
+            return getattr(self._api, function_name)(**kwargs)
+
+        request = json.dumps(
+            {"function": function_name, "kwargs": kwargs},
+            ensure_ascii=False,
+        )
+        try:
+            completed = subprocess.run(
+                [sys.executable, "-m", "invest_service.providers.akshare_runner"],
+                input=request,
+                text=True,
+                capture_output=True,
+                timeout=self.call_timeout_seconds,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ProviderError(
+                f"AkShare {function_name} timed out after "
+                f"{self.call_timeout_seconds} seconds"
+            ) from exc
+        if completed.returncode != 0:
+            detail = completed.stderr.strip().splitlines()
+            message = detail[-1] if detail else f"exit status {completed.returncode}"
+            raise ProviderError(f"AkShare {function_name} failed: {message}")
+        try:
+            records = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise ProviderError(
+                f"AkShare {function_name} returned malformed data"
+            ) from exc
+        if not isinstance(records, list) or not all(
+            isinstance(record, dict) for record in records
+        ):
+            raise ProviderError(f"AkShare {function_name} returned malformed data")
+        return _RecordsFrame(records)
 
     def search(
         self,
@@ -79,18 +138,28 @@ class AkshareFallbackProvider(MarketDataProvider):
     ) -> list[ProviderBar]:
         if asset.category == AssetCategory.ETF:
             return self._etf_history(asset, start_date, end_date)
+        if asset.category == AssetCategory.STOCK:
+            return self._stock_history(asset, start_date, end_date)
         if asset.category != AssetCategory.INDEX:
-            raise ProviderError("AkShare fallback only supports index and ETF history")
+            raise ProviderError("AkShare fallback does not support this asset category")
 
         symbol = self._symbol(asset.symbol)
         errors: list[str] = []
         sources = (
-            ("Tencent", self.api.stock_zh_index_daily_tx),
-            ("Sina", self.api.stock_zh_index_daily),
+            (
+                "Tencent",
+                "stock_zh_index_daily_tx",
+                {
+                    "symbol": symbol,
+                    "start_date": start_date.strftime("%Y%m%d"),
+                    "end_date": end_date.strftime("%Y%m%d"),
+                },
+            ),
+            ("Sina", "stock_zh_index_daily", {"symbol": symbol}),
         )
-        for source_name, fetch in sources:
+        for source_name, function_name, kwargs in sources:
             try:
-                frame = fetch(symbol=symbol)
+                frame = self._fetch(function_name, **kwargs)
                 if frame is None or frame.empty:
                     errors.append(f"{source_name} returned no data")
                     continue
@@ -104,6 +173,46 @@ class AkshareFallbackProvider(MarketDataProvider):
             f"AkShare index history failed for {asset.symbol}: {'; '.join(errors)}"
         )
 
+    def _stock_history(
+        self,
+        asset: ProviderAsset,
+        start_date: date,
+        end_date: date,
+    ) -> list[ProviderBar]:
+        symbol = self._symbol(asset.symbol)
+        date_args = {
+            "start_date": start_date.strftime("%Y%m%d"),
+            "end_date": end_date.strftime("%Y%m%d"),
+        }
+        errors: list[str] = []
+        sources = (
+            (
+                "Tencent",
+                "stock_zh_a_hist_tx",
+                {"symbol": symbol, **date_args, "adjust": "", "timeout": 15},
+            ),
+            (
+                "Sina",
+                "stock_zh_a_daily",
+                {"symbol": symbol, **date_args, "adjust": ""},
+            ),
+        )
+        for source_name, function_name, kwargs in sources:
+            try:
+                frame = self._fetch(function_name, **kwargs)
+                if frame is None or frame.empty:
+                    errors.append(f"{source_name} returned no data")
+                    continue
+                bars = self._bars(frame, start_date, end_date)
+                if bars:
+                    return bars
+                errors.append(f"{source_name} returned no rows in the requested range")
+            except Exception as exc:
+                errors.append(f"{source_name} failed: {exc}")
+        raise ProviderError(
+            f"AkShare stock history failed for {asset.symbol}: {'; '.join(errors)}"
+        )
+
     def _etf_catalog(self) -> list[ProviderAsset]:
         now = monotonic()
         if (
@@ -113,12 +222,12 @@ class AkshareFallbackProvider(MarketDataProvider):
             return self._etf_catalog_cache[1]
         errors: list[str] = []
         frame = None
-        for source_name, fetch in (
-            ("Sina", lambda: self.api.fund_etf_category_sina(symbol="ETF基金")),
-            ("EastMoney", self.api.fund_etf_spot_em),
+        for source_name, function_name, kwargs in (
+            ("Sina", "fund_etf_category_sina", {"symbol": "ETF基金"}),
+            ("EastMoney", "fund_etf_spot_em", {}),
         ):
             try:
-                frame = fetch()
+                frame = self._fetch(function_name, **kwargs)
                 if frame is not None and not frame.empty:
                     break
                 errors.append(f"{source_name} returned no data")
@@ -181,7 +290,10 @@ class AkshareFallbackProvider(MarketDataProvider):
             errors.append(str(exc))
 
         try:
-            frame = self.api.fund_etf_hist_sina(symbol=self._symbol(asset.symbol))
+            frame = self._fetch(
+                "fund_etf_hist_sina",
+                symbol=self._symbol(asset.symbol),
+            )
             if frame is not None and not frame.empty:
                 bars = self._bars(frame, start_date, end_date)
                 if bars:
