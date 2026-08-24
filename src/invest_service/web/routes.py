@@ -16,25 +16,15 @@ def root():
 
 @router.get("/market", response_class=HTMLResponse)
 def market(request: Request):
-    return templates.TemplateResponse(request=request, name="market.html")
+    return templates.TemplateResponse(
+        request=request,
+        name="market.html",
+        context={
+            "market_provider_warning": request.app.state.market_provider_warning,
+        },
+    )
 
 
 @router.get("/strategy", response_class=HTMLResponse)
 def strategy(request: Request):
     return templates.TemplateResponse(request=request, name="strategy.html")
-
-
-@router.get("/invest/market", response_class=RedirectResponse)
-def legacy_market():
-    return RedirectResponse("/market")
-
-
-@router.get("/invest/strategy", response_class=RedirectResponse)
-def legacy_strategy():
-    return RedirectResponse("/strategy")
-
-
-@router.get("/invest/chart", response_class=RedirectResponse)
-def legacy_chart(request: Request):
-    query = f"?{request.url.query}" if request.url.query else ""
-    return RedirectResponse(f"/market{query}")

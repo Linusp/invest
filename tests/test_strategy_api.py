@@ -2,14 +2,17 @@ from datetime import date
 from decimal import Decimal
 
 from invest_service.models import ExchangeRate, MarketBar
+from invest_service.services import MarketService
 
 
 def _create_strategy_and_asset(client):
     client.get("/api/v1/assets/search", params={"q": "600000"})
-    client.post(
-        "/api/v1/assets/600000.SH/sync",
-        params={"start_date": "2026-07-01", "end_date": "2026-07-13"},
-    )
+    with client.app.state.session_factory() as session:
+        MarketService(session, client.app.state.market_provider).sync_asset(
+            "600000.SH",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 13),
+        )
     response = client.post(
         "/api/v1/strategies",
         json={"name": "银行价值", "description": "测试策略"},

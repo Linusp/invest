@@ -13,7 +13,6 @@ def test_mcp_tools_execute_market_and_strategy_workflows(session_factory, provid
     mcp = build_mcp(session_factory, provider)
     assert {
         "search_assets",
-        "update_asset_market_data",
         "get_market_history",
         "create_strategy",
         "get_strategy",
@@ -25,17 +24,6 @@ def test_mcp_tools_execute_market_and_strategy_workflows(session_factory, provid
 
     assets = call_tool(mcp, "search_assets", {"query": "600000"})
     assert assets[0]["symbol"] == "600000.SH"
-    sync = call_tool(
-        mcp,
-        "update_asset_market_data",
-        {
-            "symbol": "600000.SH",
-            "start_date": "2026-07-01",
-            "end_date": "2026-07-13",
-        },
-    )
-    assert sync["created"] == 2
-
     strategy = call_tool(mcp, "create_strategy", {"name": "MCP strategy"})
     snapshot = call_tool(
         mcp,
@@ -107,4 +95,4 @@ def test_mcp_streamable_http_endpoint(client):
     assert tools.status_code == 200
     names = {item["name"] for item in tools.json()["result"]["tools"]}
     assert "get_strategy_positions" in names
-    assert "update_asset_market_data" in names
+    assert "update_asset_market_data" not in names

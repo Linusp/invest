@@ -88,23 +88,6 @@ def build_mcp(
             return _json_asset(asset)
 
     @mcp.tool()
-    def update_asset_market_data(
-        symbol: str,
-        start_date: str | None = None,
-        end_date: str | None = None,
-        overwrite: bool = False,
-    ) -> dict:
-        """Fetch and persist daily market data for one registered asset."""
-        with session_factory() as session:
-            result = MarketService(session, provider).sync_asset(
-                symbol,
-                date.fromisoformat(start_date) if start_date else None,
-                date.fromisoformat(end_date) if end_date else None,
-                overwrite,
-            )
-            return _json(result)
-
-    @mcp.tool()
     def get_market_history(
         symbol: str,
         start_date: str | None = None,

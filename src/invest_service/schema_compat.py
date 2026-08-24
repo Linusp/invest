@@ -1,4 +1,4 @@
-from sqlalchemy import Engine, inspect, select, text
+from sqlalchemy import Engine, Index, MetaData, Table, inspect, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from .models import OpeningSnapshot, Strategy
@@ -20,6 +20,14 @@ def prepare_legacy_schema(engine: Engine) -> None:
                     "NOT NULL DEFAULT 'CNY'"
                 )
             )
+    if "assets" in table_names and "is_favorite" not in columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE assets ADD COLUMN is_favorite BOOLEAN "
+                    "NOT NULL DEFAULT TRUE"
+                )
+            )
     if "trades" in table_names:
         trade_columns = {
             item["name"] for item in inspector.get_columns("trades")
@@ -29,12 +37,10 @@ def prepare_legacy_schema(engine: Engine) -> None:
                 connection.execute(
                     text("ALTER TABLE trades ADD COLUMN position_id VARCHAR(36)")
                 )
-            connection.execute(
-                text(
-                    "CREATE INDEX IF NOT EXISTS ix_trades_position_id "
-                    "ON trades (position_id)"
-                )
-            )
+        trades = Table("trades", MetaData(), autoload_with=engine)
+        Index("ix_trades_position_id", trades.c.position_id).create(
+            bind=engine, checkfirst=True
+        )
 
 
 def migrate_legacy_data(engine: Engine) -> None:

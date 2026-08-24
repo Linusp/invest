@@ -2,9 +2,14 @@
 {% set active_page = "market" %}
 {% block title %}行情 · Invest{% endblock %}
 {% block head %}
-<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+<script src="/static/vendor/echarts-5.4.3.min.js"></script>
 {% endblock %}
 {% block content %}
+{% if market_provider_warning %}
+<div class="panel" role="alert" style="margin-bottom:16px;color:#a33">
+    {{ market_provider_warning }}
+</div>
+{% endif %}
 <section class="page-heading">
     <div>
         <h1>市场行情</h1>
@@ -53,15 +58,17 @@
                 <div class="quote-title">
                     <h2 id="quote-name"></h2>
                     <p><span id="quote-symbol" class="mono"></span> · <span id="quote-category"></span> · <span id="quote-currency" class="mono"></span></p>
+                    <div id="quote-tags" class="quote-tags"></div>
                 </div>
                 <div class="actions">
+                    <button id="favorite-toggle" class="button" type="button"></button>
+                    <button id="edit-tags" class="button" type="button">
+                        <i data-lucide="tags"></i><span>管理标签</span>
+                    </button>
                     <div class="quote-price sensitive">
                         <strong id="quote-close">--</strong>
                         <span id="quote-change">--</span>
                     </div>
-                    <button id="sync-asset" class="icon-button" type="button" title="更新行情" aria-label="更新行情">
-                        <i data-lucide="refresh-cw"></i>
-                    </button>
                 </div>
             </div>
             <div id="market-chart" class="chart"></div>
@@ -80,48 +87,109 @@
         </div>
     </section>
 </div>
+
+<dialog id="tag-dialog">
+    <form id="tag-form">
+        <div class="dialog-header">
+            <h2>管理标的标签</h2>
+            <button class="icon-button" type="button" data-close-tag-dialog aria-label="关闭"><i data-lucide="x"></i></button>
+        </div>
+        <div class="dialog-body">
+            <label class="field">
+                <span class="label">标签</span>
+                <input id="tag-input" class="input" type="text" maxlength="1300" placeholder="多个标签用逗号分隔">
+            </label>
+            <div class="muted" style="font-size:12px">一个标的最多 20 个标签；可用中英文逗号或换行分隔。</div>
+        </div>
+        <div class="dialog-footer">
+            <button class="button" type="button" data-close-tag-dialog>取消</button>
+            <button class="button primary" type="submit">保存</button>
+        </div>
+    </form>
+</dialog>
 {% endblock %}
 {% block scripts %}
 <script>
 (() => {
-    const state = { assets: [], selected: null, history: [], chart: null };
+    const state = {
+        assets: [], selected: null, history: [], chart: null,
+        historyPoll: null, historyPollAttempts: 0, view: "favorites",
+    };
     const $ = (id) => document.getElementById(id);
     const categoryLabel = {stock: "个股", etf: "ETF", index: "指数"};
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
     })[c]);
+    const tagNames = (asset) => (asset?.tags || []).map(tag =>
+        typeof tag === "string" ? tag : tag.name
+    ).filter(Boolean);
 
     function renderAssets() {
         $("asset-count").textContent = state.assets.length;
-        $("asset-results").innerHTML = state.assets.length ? state.assets.map(asset => `
-            <button class="asset-row ${state.selected?.symbol === asset.symbol ? "active" : ""}"
-                    type="button" data-symbol="${escapeHtml(asset.symbol)}">
-                <span><strong>${escapeHtml(asset.name)}</strong><small class="mono">${escapeHtml(asset.symbol)}</small></span>
-                <span class="badge">${asset.currency}</span>
-            </button>`).join("") :
-            '<div class="empty-state" style="min-height:180px"><div>暂无标的</div></div>';
+        const groups = new Map();
+        state.assets.forEach(asset => {
+            const names = tagNames(asset);
+            (names.length ? names : ["未分类"]).forEach(name => {
+                if (!groups.has(name)) groups.set(name, []);
+                groups.get(name).push(asset);
+            });
+        });
+        $("asset-results").innerHTML = state.assets.length ? [...groups.entries()]
+            .sort(([left], [right]) => left.localeCompare(right, "zh-CN"))
+            .map(([name, assets]) => `
+                <details class="asset-group">
+                    <summary>
+                        <span class="asset-group-name"><span class="asset-group-dot"></span>${escapeHtml(name)}</span>
+                        <span class="asset-group-meta">
+                            <span class="asset-group-count">${assets.length}</span>
+                            <i class="asset-group-chevron" data-lucide="chevron-right"></i>
+                        </span>
+                    </summary>
+                    ${assets.map(asset => `
+                        <div class="asset-row ${state.selected?.symbol === asset.symbol ? "active" : ""} ${asset.is_favorite ? "" : "hidden-favorite"}">
+                            <button class="asset-row-main" type="button" data-symbol="${escapeHtml(asset.symbol)}">
+                                <span><strong>${escapeHtml(asset.name)}</strong><small class="mono">${escapeHtml(asset.symbol)}</small></span>
+                                <span class="badge">${asset.is_favorite ? escapeHtml(asset.currency) : "未自选"}</span>
+                            </button>
+                            <button class="asset-row-action" type="button"
+                                    data-favorite-symbol="${escapeHtml(asset.symbol)}"
+                                    data-favorite-value="${asset.is_favorite ? "false" : "true"}"
+                                    title="${asset.is_favorite ? "移出自选" : "加入自选"}"
+                                    aria-label="${asset.is_favorite ? "移出自选" : "加入自选"}">
+                                <i data-lucide="${asset.is_favorite ? "x" : "plus"}"></i>
+                            </button>
+                        </div>`).join("")}
+                </details>`).join("") :
+                '<div class="empty-state" style="min-height:180px"><div>暂无标的</div></div>';
         $("asset-results").querySelectorAll("[data-symbol]").forEach(button => {
             button.addEventListener("click", () => selectAsset(
                 state.assets.find(asset => asset.symbol === button.dataset.symbol)
             ));
         });
+        $("asset-results").querySelectorAll("[data-favorite-symbol]").forEach(button => {
+            button.addEventListener("click", event => toggleFavorite(
+                button.dataset.favoriteSymbol,
+                button.dataset.favoriteValue === "true",
+                event,
+            ).catch(error => showToast(error.message, "error")));
+        });
+        window.lucide?.createIcons();
     }
 
     async function loadAssets() {
         try {
             state.assets = await api("/assets?limit=200");
+            state.view = "favorites";
             renderAssets();
             const params = new URLSearchParams(location.search);
-            const requested = params.get("symbol") || params.get("code");
-            if (requested) {
-                let asset = state.assets.find(item => item.symbol === requested.toUpperCase());
-                if (!asset) {
-                    try { asset = await api("/assets/" + encodeURIComponent(requested)); } catch (_) {}
-                }
-                if (asset) await selectAsset(asset);
-            } else if (state.assets.length) {
-                await selectAsset(state.assets[0]);
+            const explicit = params.get("symbol") || params.get("code");
+            const requested = explicit || "000001.SH";
+            let asset = state.assets.find(item => item.symbol === requested.toUpperCase());
+            if (!asset && explicit) {
+                try { asset = await api("/assets/" + encodeURIComponent(requested)); } catch (_) {}
             }
+            if (asset) await selectAsset(asset);
+            else if (state.assets.length) await selectAsset(state.assets[0]);
         } catch (error) { showToast(error.message, "error"); }
     }
 
@@ -132,10 +200,12 @@
         if (!query) {
             const suffix = category ? "?category=" + category + "&limit=200" : "?limit=200";
             state.assets = await api("/assets" + suffix);
+            state.view = "favorites";
         } else {
             const params = new URLSearchParams({q: query, limit: "50"});
             if (category) params.set("category", category);
             state.assets = await api("/assets/search?" + params);
+            state.view = "search";
         }
         renderAssets();
         if (state.assets.length) await selectAsset(state.assets[0]);
@@ -152,10 +222,93 @@
         $("quote-symbol").textContent = asset.symbol;
         $("quote-category").textContent = categoryLabel[asset.category] || asset.category;
         $("quote-currency").textContent = asset.currency;
-        await loadHistory();
+        renderSelectedTags();
+        renderFavoriteAction();
+        stopHistoryPolling();
+        await loadHistory(true);
     }
 
-    async function loadHistory() {
+    function renderSelectedTags() {
+        const names = tagNames(state.selected);
+        $("quote-tags").innerHTML = names.length
+            ? names.map(name => `<span class="tag-chip">${escapeHtml(name)}</span>`).join("")
+            : '<span class="muted">未分类</span>';
+    }
+
+    function renderFavoriteAction() {
+        if (!state.selected) return;
+        const favorite = state.selected.is_favorite;
+        $("favorite-toggle").innerHTML = favorite
+            ? '<i data-lucide="star-off"></i><span>移出自选</span>'
+            : '<i data-lucide="star"></i><span>加入自选</span>';
+        $("favorite-toggle").classList.toggle("danger", favorite);
+        window.lucide?.createIcons();
+    }
+
+    function clearSelection() {
+        stopHistoryPolling();
+        state.selected = null;
+        state.history = [];
+        $("quote-content").hidden = true;
+        $("quote-empty").hidden = false;
+        history.replaceState({}, "", "/market");
+        renderAssets();
+    }
+
+    async function toggleFavorite(symbol, isFavorite, event = null) {
+        event?.stopPropagation();
+        const updated = await api(
+            "/assets/" + encodeURIComponent(symbol) + "/favorite",
+            {method: "PUT", body: JSON.stringify({is_favorite: isFavorite})},
+        );
+        if (state.view === "favorites" && !isFavorite) {
+            state.assets = state.assets.filter(asset => asset.symbol !== symbol);
+        } else {
+            state.assets = state.assets.map(asset => asset.symbol === symbol ? updated : asset);
+        }
+
+        if (state.selected?.symbol === symbol) {
+            if (state.view === "favorites" && !isFavorite) {
+                const next = state.assets.find(asset => asset.symbol === "000001.SH")
+                    || state.assets[0];
+                if (next) await selectAsset(next);
+                else clearSelection();
+            } else {
+                state.selected = updated;
+                renderAssets();
+                renderFavoriteAction();
+            }
+        } else {
+            renderAssets();
+        }
+        showToast(isFavorite ? "已加入自选" : "已移出自选，历史数据仍保留", "success");
+    }
+
+    function openTagDialog() {
+        if (!state.selected) return;
+        $("tag-input").value = tagNames(state.selected).join(", ");
+        $("tag-dialog").showModal();
+        $("tag-input").focus();
+    }
+
+    async function saveTags(event) {
+        event.preventDefault();
+        if (!state.selected) return;
+        const tags = $("tag-input").value.split(/[,，\n]/)
+            .map(value => value.trim()).filter(Boolean);
+        const updated = await api(
+            "/assets/" + encodeURIComponent(state.selected.symbol) + "/tags",
+            {method: "PUT", body: JSON.stringify({tags})},
+        );
+        state.assets = state.assets.map(asset => asset.symbol === updated.symbol ? updated : asset);
+        state.selected = updated;
+        renderAssets();
+        renderSelectedTags();
+        $("tag-dialog").close();
+        showToast("标签已保存", "success");
+    }
+
+    async function loadHistory(pollWhenEmpty = false) {
         if (!state.selected) return;
         $("quote-panel").classList.add("loading");
         try {
@@ -168,11 +321,34 @@
             renderQuote();
             renderChart();
             renderHistory();
+            if (state.history.length) {
+                stopHistoryPolling();
+            } else if (pollWhenEmpty) {
+                startHistoryPolling(state.selected.symbol);
+            }
         } catch (error) {
             showToast(error.message, "error");
         } finally {
             $("quote-panel").classList.remove("loading");
         }
+    }
+
+    function startHistoryPolling(symbol) {
+        stopHistoryPolling();
+        state.historyPollAttempts = 0;
+        $("quote-change").textContent = "行情正在后台更新…";
+        state.historyPoll = window.setInterval(async () => {
+            if (state.selected?.symbol !== symbol || state.historyPollAttempts++ >= 20) {
+                stopHistoryPolling();
+                return;
+            }
+            await loadHistory(false);
+        }, 1500);
+    }
+
+    function stopHistoryPolling() {
+        if (state.historyPoll) window.clearInterval(state.historyPoll);
+        state.historyPoll = null;
     }
 
     function renderQuote() {
@@ -255,24 +431,17 @@
         }, true);
     }
 
-    async function syncAsset() {
-        if (!state.selected) return;
-        const button = $("sync-asset");
-        button.disabled = true;
-        try {
-            const result = await api(
-                "/assets/" + encodeURIComponent(state.selected.symbol) + "/sync",
-                {method: "POST"}
-            );
-            showToast(`更新完成：新增 ${result.created}，更新 ${result.updated}`, "success");
-            await loadHistory();
-        } catch (error) {
-            showToast(error.message, "error");
-        } finally { button.disabled = false; }
-    }
-
     $("market-search").addEventListener("submit", event => searchAssets(event).catch(error => showToast(error.message, "error")));
-    $("sync-asset").addEventListener("click", syncAsset);
+    $("edit-tags").addEventListener("click", openTagDialog);
+    $("favorite-toggle").addEventListener("click", () => {
+        if (!state.selected) return;
+        toggleFavorite(state.selected.symbol, !state.selected.is_favorite)
+            .catch(error => showToast(error.message, "error"));
+    });
+    $("tag-form").addEventListener("submit", event => saveTags(event).catch(error => showToast(error.message, "error")));
+    document.querySelectorAll("[data-close-tag-dialog]").forEach(button =>
+        button.addEventListener("click", () => $("tag-dialog").close())
+    );
     $("start-date").addEventListener("change", loadHistory);
     $("end-date").addEventListener("change", loadHistory);
     window.addEventListener("resize", () => state.chart?.resize());

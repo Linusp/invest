@@ -122,15 +122,40 @@ svg { width: 18px; height: 18px; flex: none; }
 
 .market-toolbar { display: grid; grid-template-columns: minmax(240px, 1fr) 150px auto; gap: 10px; margin-bottom: 16px; }
 .market-layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 18px; align-items: start; }
-.asset-results { max-height: calc(100vh - 245px); overflow: auto; }
-.asset-row { width: 100%; border: 0; border-bottom: 1px solid #edf0f3; background: white; padding: 12px 14px; text-align: left; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-.asset-row:hover { background: #f8f9fa; }
-.asset-row.active { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
+.asset-results { max-height: calc(100vh - 245px); overflow: auto; padding: 9px; background: #f6f8fa; }
+.asset-group { margin-bottom: 8px; border: 1px solid #e2e7ed; border-radius: 9px; background: white; overflow: hidden; box-shadow: 0 1px 2px rgba(23,32,51,.03); }
+.asset-group:last-child { margin-bottom: 0; }
+.asset-group > summary {
+    min-height: 42px; padding: 9px 11px; display: flex; align-items: center;
+    justify-content: space-between; gap: 8px; cursor: pointer; color: #344054;
+    font-size: 12px; font-weight: 720; list-style: none; user-select: none;
+}
+.asset-group > summary::-webkit-details-marker { display: none; }
+.asset-group > summary:hover { background: #f8fafb; }
+.asset-group[open] > summary { border-bottom: 1px solid #edf0f3; }
+.asset-group-name, .asset-group-meta { display: inline-flex; align-items: center; gap: 8px; }
+.asset-group-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.asset-group-count { min-width: 22px; padding: 2px 6px; border-radius: 999px; color: #667085; background: #eef1f4; text-align: center; font-size: 10px; font-weight: 680; }
+.asset-group-chevron { width: 14px; height: 14px; color: #8a94a3; transition: transform .16s ease; }
+.asset-group[open] .asset-group-chevron { transform: rotate(90deg); }
+.asset-row { position: relative; display: flex; align-items: center; margin: 4px 6px; border-radius: 7px; }
+.asset-row-main { min-width: 0; flex: 1; border: 0; background: transparent; padding: 9px 36px 9px 10px; text-align: left; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; border-radius: 7px; }
+.asset-row:hover { background: #f7f9fa; }
+.asset-row.active { background: var(--accent-soft); }
+.asset-row.active::before { content: ""; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--accent); }
+.asset-row.hidden-favorite { opacity: .72; }
+.asset-row-action { position: absolute; right: 7px; width: 25px; height: 25px; display: grid; place-items: center; border: 0; border-radius: 5px; color: #98a2b3; background: transparent; cursor: pointer; opacity: 0; }
+.asset-row-action svg { width: 14px; height: 14px; }
+.asset-row:hover .asset-row-action, .asset-row-action:focus-visible { opacity: 1; }
+.asset-row-action:hover { color: #a82e2e; background: #fdeeee; }
+.asset-row.hidden-favorite .asset-row-action:hover { color: var(--accent); background: var(--accent-soft); }
 .asset-row strong { display: block; font-size: 13px; margin-bottom: 3px; }
 .asset-row small { color: var(--muted); font-size: 11px; }
 .quote-header { padding: 16px; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; border-bottom: 1px solid var(--line); }
 .quote-title h2 { margin: 0 0 5px; font-size: 19px; }
 .quote-title p { margin: 0; color: var(--muted); font-size: 12px; }
+.quote-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; min-height: 21px; margin-top: 9px; font-size: 11px; }
+.tag-chip { display: inline-flex; align-items: center; padding: 3px 8px; border: 1px solid #cce2dc; border-radius: 999px; background: #f3faf8; color: #155e51; font-size: 10px; font-weight: 680; }
 .quote-price { text-align: right; }
 .quote-price strong { display: block; font-size: 24px; }
 .quote-price span { font-size: 12px; }
@@ -186,6 +211,7 @@ dialog::backdrop { background: rgba(20,28,40,.52); }
     .market-toolbar { grid-template-columns: 1fr 120px; }
     .market-toolbar .button { grid-column: 1 / -1; }
     .chart { height: 390px; }
+    .asset-row-action { opacity: 1; }
     .field-row { grid-template-columns: 1fr; }
     .snapshot-add-grid { grid-template-columns: 1fr 1fr 36px; }
     .snapshot-add-grid .search-box { grid-column: 1 / -1; }

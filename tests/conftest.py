@@ -22,7 +22,14 @@ class FakeMarketProvider(MarketDataProvider):
     name = "fake"
 
     assets = [
-        ProviderAsset("600000.SH", "600000", "浦发银行", AssetCategory.STOCK, "1.600000"),
+        ProviderAsset(
+            "600000.SH",
+            "600000",
+            "浦发银行",
+            AssetCategory.STOCK,
+            "1.600000",
+            default_tags=("银行",),
+        ),
         ProviderAsset("510300.SH", "510300", "沪深300ETF", AssetCategory.ETF, "1.510300"),
         ProviderAsset("000300.SH", "000300", "沪深300", AssetCategory.INDEX, "1.000300"),
     ]
@@ -94,6 +101,8 @@ def client(session_factory, provider):
         ),
         provider,
     )
+    app.state.session_factory = session_factory
+    app.state.enqueue_market_update = lambda _: None
 
     def override_db():
         with session_factory() as session:

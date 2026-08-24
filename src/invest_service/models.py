@@ -6,6 +6,8 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
+    Column,
     Date,
     DateTime,
     Enum,
@@ -13,8 +15,10 @@ from sqlalchemy import (
     Index,
     Numeric,
     String,
+    Table,
     Text,
     UniqueConstraint,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,6 +42,34 @@ class TradeType(str, enum.Enum):
     WITHDRAW = "withdraw"
 
 
+asset_tags = Table(
+    "asset_tags",
+    Base.metadata,
+    Column(
+        "asset_symbol",
+        String(32),
+        ForeignKey("assets.symbol", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "tag_name",
+        String(64),
+        ForeignKey("tags.name", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    assets: Mapped[list["Asset"]] = relationship(
+        secondary=asset_tags,
+        back_populates="tags",
+    )
+
+
 class Asset(Base):
     __tablename__ = "assets"
 
@@ -49,6 +81,13 @@ class Asset(Base):
     )
     currency: Mapped[str] = mapped_column(String(3), default="CNY", index=True)
     provider_id: Mapped[str | None] = mapped_column(String(64))
+    is_favorite: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=true(),
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -56,6 +95,12 @@ class Asset(Base):
 
     history: Mapped[list["MarketBar"]] = relationship(
         back_populates="asset", cascade="all, delete-orphan"
+    )
+    tags: Mapped[list[Tag]] = relationship(
+        secondary=asset_tags,
+        back_populates="assets",
+        lazy="selectin",  # codespell:ignore selectin
+        order_by=Tag.name,
     )
 
 

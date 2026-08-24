@@ -1,14 +1,18 @@
 from contextlib import asynccontextmanager
+from threading import Lock
+from time import monotonic
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 
 from .api import assets_router, exchange_rates_router, strategies_router
 from .config import Settings, get_settings
-from .database import Base, SessionLocal, engine
+from .database import Base, make_engine, make_session_factory
 from .mcp_server import build_mcp
 from .providers import (
     EcbExchangeRateProvider,
@@ -16,12 +20,12 @@ from .providers import (
     ProviderError,
     make_market_provider,
 )
-from .scheduler import make_scheduler
 from .schema_compat import migrate_legacy_data, prepare_legacy_schema
 from .services import (
     AssetNotFound,
     ExchangeRateUnavailable,
     InvalidTrade,
+    MarketService,
     StrategyNotFound,
 )
 from .web import router as web_router
@@ -34,44 +38,79 @@ def create_app(
     exchange_rate_provider: EcbExchangeRateProvider | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
+    provider_was_injected = provider is not None
     provider = provider or make_market_provider(settings)
     exchange_rate_provider = exchange_rate_provider or EcbExchangeRateProvider()
+    app_engine = make_engine(settings.database_url)
+    session_factory = make_session_factory(app_engine)
     mcp = build_mcp(
-        SessionLocal,
+        session_factory,
         provider,
         settings.mcp_allowed_hosts,
         settings.mcp_allowed_origins,
         settings.reporting_currency,
     )
-    scheduler = make_scheduler(
-        SessionLocal,
-        provider,
-        settings.auto_update_interval_minutes,
-        settings.auto_update_lookback_days,
-        exchange_rate_provider,
-        settings.exchange_rate_update_hour,
-        settings.reporting_currency,
-    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        prepare_legacy_schema(engine)
-        Base.metadata.create_all(bind=engine)
-        migrate_legacy_data(engine)
+        prepare_legacy_schema(app_engine)
+        tags_table_existed = inspect(app_engine).has_table("tags")
+        Base.metadata.create_all(bind=app_engine)
+        migrate_legacy_data(app_engine)
+        with session_factory() as session:
+            market_service = MarketService(session, provider)
+            if not tags_table_existed:
+                market_service.backfill_default_tags()
+            market_service.ensure_default_asset()
         async with mcp.session_manager.run():
-            if settings.auto_update_enabled:
-                scheduler.start()
             try:
                 yield
             finally:
-                if scheduler.running:
-                    scheduler.shutdown(wait=False)
+                app_engine.dispose()
 
     app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
     app.state.market_provider = provider
     app.state.exchange_rate_provider = exchange_rate_provider
+    app.state.session_factory = session_factory
     app.state.reporting_currency = settings.reporting_currency.upper()
     app.state.mcp = mcp
+    tushare_token_missing = (
+        not provider_was_injected
+        and settings.market_provider == "tushare"
+        and not settings.tushare_token
+    )
+    configured_provider_blocked = (
+        tushare_token_missing
+        and settings.market_provider_order == "configured_first"
+    )
+    app.state.market_provider_discovery_enabled = not configured_provider_blocked
+    if not tushare_token_missing:
+        app.state.market_provider_warning = None
+    elif settings.market_provider_order == "free_first":
+        app.state.market_provider_warning = (
+            "未配置 Tushare Token，免费行情源仍可使用，但 Tushare 付费兜底不可用。"
+        )
+    else:
+        app.state.market_provider_warning = (
+            "未配置 Tushare Token，外部标的发现和行情更新已暂停。请设置 "
+            "INVEST_TUSHARE_TOKEN，或将 INVEST_MARKET_PROVIDER_ORDER 改为 "
+            "free_first，然后重启 app、worker 服务。"
+        )
+    enqueued_at: dict[str, float] = {}
+    enqueue_lock = Lock()
+
+    def enqueue_market_update(symbol: str) -> None:
+        from .celery_app import update_asset_market_data
+
+        now = monotonic()
+        with enqueue_lock:
+            if now - enqueued_at.get(symbol, 0) < 300:
+                return
+            update_asset_market_data.delay(symbol)
+            enqueued_at[symbol] = now
+
+    app.state.enqueue_market_update = enqueue_market_update
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
     if settings.cors_origins:
         app.add_middleware(
             CORSMiddleware,

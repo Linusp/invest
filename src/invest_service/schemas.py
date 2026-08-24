@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .models import AssetCategory, TradeType
 
@@ -16,6 +16,29 @@ class AssetCreate(APIModel):
     category: AssetCategory
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     provider_id: str | None = None
+    tags: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, tags: list[str]) -> list[str]:
+        return normalize_tag_names(tags)
+
+
+class TagRead(APIModel):
+    name: str
+
+
+class AssetTagsUpdate(APIModel):
+    tags: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, tags: list[str]) -> list[str]:
+        return normalize_tag_names(tags)
+
+
+class AssetFavoriteUpdate(APIModel):
+    is_favorite: bool
 
 
 class AssetRead(APIModel):
@@ -25,8 +48,26 @@ class AssetRead(APIModel):
     category: AssetCategory
     currency: str
     provider_id: str | None
+    is_favorite: bool
+    tags: list[TagRead]
     created_at: datetime
     updated_at: datetime
+
+
+def normalize_tag_names(tags: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in tags:
+        name = " ".join(value.split())
+        if not name:
+            raise ValueError("tag must not be empty")
+        if len(name) > 64:
+            raise ValueError("tag must not exceed 64 characters")
+        key = name.casefold()
+        if key not in seen:
+            normalized.append(name)
+            seen.add(key)
+    return normalized
 
 
 class MarketBarRead(APIModel):

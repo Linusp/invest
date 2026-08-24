@@ -4,82 +4,15 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session
 
 from invest_service.database import Base
-from invest_service.migration import migrate_oreo
 from invest_service.models import (
     Asset,
     AssetCategory,
-    MarketBar,
     OpeningBalance,
     Strategy,
     Trade,
     TradeType,
 )
 from invest_service.schema_compat import migrate_legacy_data, prepare_legacy_schema
-
-
-def test_migrates_supported_oreo_market_data(tmp_path):
-    source_url = f"sqlite:///{tmp_path / 'oreo.db'}"
-    target_url = f"sqlite:///{tmp_path / 'invest.db'}"
-    source = create_engine(source_url)
-    with source.begin() as connection:
-        connection.execute(
-            text(
-                """
-                CREATE TABLE assets (
-                    zs_code TEXT PRIMARY KEY, code TEXT, name TEXT, category TEXT
-                )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                CREATE TABLE asset_market_history (
-                    asset_id TEXT, date DATE, open_price NUMERIC, high_price NUMERIC,
-                    low_price NUMERIC, close_price NUMERIC, nav NUMERIC, auv NUMERIC,
-                    pre_close NUMERIC, change NUMERIC, pct_change NUMERIC,
-                    vol NUMERIC, amount NUMERIC
-                )
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                INSERT INTO assets VALUES
-                  ('600000.SH', '600000', '浦发银行', 'stock'),
-                  ('510300.SH', '510300', '沪深300ETF', 'fund'),
-                  ('110022.OF', '110022', '普通基金', 'fund')
-                """
-            )
-        )
-        connection.execute(
-            text(
-                """
-                INSERT INTO asset_market_history VALUES
-                  ('600000.SH', '2026-07-10', 9, 11, 8, 10, NULL, NULL,
-                   9, 1, 11.11, 100, 1000),
-                  ('510300.SH', '2026-07-10', NULL, NULL, NULL, NULL, 4.5, 4.5,
-                   NULL, NULL, NULL, NULL, NULL)
-                """
-            )
-        )
-    source.dispose()
-
-    assert migrate_oreo(source_url, target_url) == (2, 2)
-    # Re-running is idempotent.
-    assert migrate_oreo(source_url, target_url) == (0, 0)
-
-    target = create_engine(target_url)
-    with Session(target) as session:
-        assert {asset.symbol for asset in session.query(Asset)} == {
-            "600000.SH",
-            "510300.SH",
-        }
-        etf_bar = session.query(MarketBar).filter_by(asset_symbol="510300.SH").one()
-        assert float(etf_bar.close) == 4.5
-        assert etf_bar.source == "oreo"
-    target.dispose()
 
 
 def test_upgrades_legacy_currency_and_opening_snapshot_schema(tmp_path):
@@ -121,7 +54,12 @@ def test_upgrades_legacy_currency_and_opening_snapshot_schema(tmp_path):
     Base.metadata.create_all(engine)
     migrate_legacy_data(engine)
 
-    assert "currency" in {item["name"] for item in inspect(engine).get_columns("assets")}
+    asset_columns = {item["name"] for item in inspect(engine).get_columns("assets")}
+    assert {"currency", "is_favorite"} <= asset_columns
+    with engine.connect() as connection:
+        assert connection.execute(
+            text("SELECT is_favorite FROM assets WHERE symbol = '600000.SH'")
+        ).scalar_one() in (True, 1)
     with Session(engine) as session:
         balance = session.query(OpeningBalance).one()
         assert balance.currency == "HKD"
