@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+{% set active_page = "market" %}
+{% block title %}行情详情 · Invest{% endblock %}
+{% block head %}<script src="/static/vendor/echarts-5.4.3.min.js"></script>{% endblock %}
+{% block content %}
+<div class="asset-detail-nav">
+    <a href="/market"><i data-lucide="arrow-left"></i><span>行情首页</span></a>
+</div>
+{% if market_provider_warning %}
+<div class="provider-warning">
+    <i data-lucide="triangle-alert"></i><span>{{ market_provider_warning }}</span>
+</div>
+{% endif %}
+
+<section id="quote-panel" class="panel asset-quote-panel">
+    <div class="quote-header">
+        <div class="quote-title">
+            <h1 id="quote-name">加载中…</h1>
+            <p><span id="quote-symbol" class="mono">{{ symbol }}</span> · <span id="quote-category">--</span> · <span id="quote-currency">--</span></p>
+            <div id="quote-tags" class="quote-tags"></div>
+            <div id="favorite-meta" class="favorite-meta"></div>
+        </div>
+        <div class="quote-summary">
+            <div class="quote-price">
+                <strong id="quote-close">--</strong>
+                <span id="quote-change" class="muted">暂无行情</span>
+            </div>
+            <div class="actions">
+                <button id="favorite-toggle" class="button" type="button"></button>
+                <button id="edit-tags" class="button" type="button">
+                    <i data-lucide="tags"></i><span>管理标签</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="range-toolbar">
+        <div class="range-presets" aria-label="快捷日期范围">
+            <button type="button" data-range="week">本周</button>
+            <button type="button" data-range="month">本月</button>
+            <button type="button" data-range="1m">近一月</button>
+            <button type="button" data-range="3m">近三月</button>
+            <button type="button" data-range="6m">近半年</button>
+            <button type="button" data-range="ytd">今年以来</button>
+            <button type="button" data-range="1y">近一年</button>
+            <button type="button" data-range="3y">近三年</button>
+            <button type="button" data-range="5y">近五年</button>
+        </div>
+        <div class="date-range-fields">
+            <label><span>开始</span><input id="start-date" class="input" type="date"></label>
+            <span class="muted">至</span>
+            <label><span>结束</span><input id="end-date" class="input" type="date"></label>
+        </div>
+    </div>
+
+    <div id="market-chart" class="chart"></div>
+    <div class="panel-header">
+        <h2 class="panel-title">历史行情</h2>
+        <span class="muted table-caption">显示所选日期范围内最近 20 条</span>
+    </div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr>
+                <th>日期</th><th class="text-right">开盘</th><th class="text-right">最高</th>
+                <th class="text-right">最低</th><th class="text-right">收盘</th>
+                <th class="text-right">涨跌幅</th><th class="text-right">成交量</th>
+            </tr></thead>
+            <tbody id="history-body"></tbody>
+        </table>
+    </div>
+</section>
+
+<dialog id="tag-dialog">
+    <form id="tag-form">
+        <div class="dialog-header">
+            <h2>管理标的标签</h2>
+            <button class="icon-button" type="button" data-close-tag-dialog aria-label="关闭"><i data-lucide="x"></i></button>
+        </div>
+        <div class="dialog-body">
+            <label class="field">
+                <span class="label">标签</span>
+                <input id="tag-input" class="input" type="text" maxlength="1300" placeholder="多个标签用逗号分隔">
+            </label>
+            <div class="muted table-caption">一个标的最多 20 个标签；可用中英文逗号或换行分隔。</div>
+        </div>
+        <div class="dialog-footer">
+            <button class="button" type="button" data-close-tag-dialog>取消</button>
+            <button class="button primary" type="submit">保存</button>
+        </div>
+    </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+    const symbol = {{ symbol | tojson }};
+    const state = {asset: null, history: [], chart: null, poll: null, pollAttempts: 0};
+    const $ = (id) => document.getElementById(id);
+    const categoryLabel = {stock: "个股", etf: "ETF", index: "指数"};
+    const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, character => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
+    })[character]);
+    const tagNames = () => (state.asset?.tags || []).map(tag => tag.name).filter(Boolean);
+    const formatDate = (value) => {
+        const year = value.getFullYear();
+        const month = String(value.getMonth() + 1).padStart(2, "0");
+        const day = String(value.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    };
+    const shiftMonths = (value, amount) => {
+        const result = new Date(value);
+        const day = result.getDate();
+        result.setDate(1);
+        result.setMonth(result.getMonth() + amount);
+        result.setDate(Math.min(day, new Date(
+            result.getFullYear(), result.getMonth() + 1, 0,
+        ).getDate()));
+        return result;
+    };
+
+    function rangeStart(range, today) {
+        const start = new Date(today);
+        if (range === "week") {
+            start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+        } else if (range === "month") {
+            start.setDate(1);
+        } else if (range === "ytd") {
+            start.setMonth(0, 1);
+        } else if (range.endsWith("m")) {
+            return shiftMonths(start, -Number(range.slice(0, -1)));
+        } else if (range.endsWith("y")) {
+            start.setFullYear(start.getFullYear() - Number(range.slice(0, -1)));
+        }
+        return start;
+    }
+
+    function setRange(range, shouldLoad = true) {
+        const today = new Date();
+        $("start-date").value = formatDate(rangeStart(range, today));
+        $("end-date").value = formatDate(today);
+        document.querySelectorAll("[data-range]").forEach(button =>
+            button.classList.toggle("active", button.dataset.range === range)
+        );
+        if (shouldLoad && state.asset) loadHistory(false);
+    }
+
+    function renderAsset() {
+        const asset = state.asset;
+        document.title = `${asset.name} (${asset.symbol}) · Invest`;
+        $("quote-name").textContent = asset.name;
+        $("quote-symbol").textContent = asset.symbol;
+        $("quote-category").textContent = categoryLabel[asset.category] || asset.category;
+        $("quote-currency").textContent = asset.currency;
+        const tags = tagNames();
+        $("quote-tags").innerHTML = tags.length
+            ? tags.map(name => `<span class="tag-chip">${escapeHtml(name)}</span>`).join("")
+            : '<span class="muted">未分类</span>';
+        $("favorite-meta").textContent = asset.is_favorite
+            ? `自选于 ${asset.favorite_since || "--"} · 自选价格 ${asset.favorite_price == null ? "待行情更新" : number(asset.favorite_price, 4)}`
+            : "当前未加入自选";
+        $("favorite-toggle").innerHTML = asset.is_favorite
+            ? '<i data-lucide="star-off"></i><span>移出自选</span>'
+            : '<i data-lucide="star"></i><span>加入自选</span>';
+        $("favorite-toggle").classList.toggle("danger", asset.is_favorite);
+        window.lucide?.createIcons();
+    }
+
+    async function loadAsset() {
+        state.asset = await api("/assets/" + encodeURIComponent(symbol));
+        renderAsset();
+        await loadHistory(true);
+    }
+
+    async function toggleFavorite() {
+        state.asset = await api(
+            "/assets/" + encodeURIComponent(state.asset.symbol) + "/favorite",
+            {method: "PUT", body: JSON.stringify({is_favorite: !state.asset.is_favorite})},
+        );
+        renderAsset();
+        showToast(state.asset.is_favorite ? "已加入自选" : "已移出自选，历史数据仍保留", "success");
+    }
+
+    function openTagDialog() {
+        $("tag-input").value = tagNames().join(", ");
+        $("tag-dialog").showModal();
+        $("tag-input").focus();
+    }
+
+    async function saveTags(event) {
+        event.preventDefault();
+        const tags = $("tag-input").value.split(/[,，\n]/)
+            .map(value => value.trim()).filter(Boolean);
+        state.asset = await api(
+            "/assets/" + encodeURIComponent(state.asset.symbol) + "/tags",
+            {method: "PUT", body: JSON.stringify({tags})},
+        );
+        renderAsset();
+        $("tag-dialog").close();
+        showToast("标签已保存", "success");
+    }
+
+    async function loadHistory(pollWhenEmpty = false) {
+        if (!state.asset) return;
+        $("quote-panel").classList.add("loading");
+        try {
+            const params = new URLSearchParams({
+                start_date: $("start-date").value,
+                end_date: $("end-date").value,
+                limit: "10000",
+            });
+            state.history = await api(
+                "/assets/" + encodeURIComponent(state.asset.symbol) + "/history?" + params
+            );
+            renderQuote();
+            renderChart();
+            renderHistory();
+            if (state.history.length) stopPolling();
+            else if (pollWhenEmpty) startPolling();
+        } catch (error) {
+            showToast(error.message, "error");
+        } finally {
+            $("quote-panel").classList.remove("loading");
+        }
+    }
+
+    function startPolling() {
+        stopPolling();
+        state.pollAttempts = 0;
+        $("quote-change").textContent = "行情正在后台更新…";
+        state.poll = window.setInterval(async () => {
+            if (state.pollAttempts++ >= 20) {
+                stopPolling();
+                return;
+            }
+            await loadHistory(false);
+        }, 1500);
+    }
+
+    function stopPolling() {
+        if (state.poll) window.clearInterval(state.poll);
+        state.poll = null;
+    }
+
+    function renderQuote() {
+        const latest = state.history.at(-1);
+        if (!latest) {
+            $("quote-close").textContent = "--";
+            $("quote-change").textContent = "所选日期范围暂无行情";
+            $("quote-change").className = "muted";
+            return;
+        }
+        const previous = latest.previous_close ?? state.history.at(-2)?.close;
+        const change = latest.change == null
+            ? (previous ? Number(latest.close) - Number(previous) : 0)
+            : Number(latest.change);
+        const percent = latest.change_percent == null
+            ? (previous ? change / Number(previous) * 100 : 0)
+            : Number(latest.change_percent);
+        $("quote-close").textContent = number(latest.close, 4);
+        $("quote-change").textContent = `${change >= 0 ? "+" : ""}${number(change, 4)} (${percent >= 0 ? "+" : ""}${number(percent)}%) · ${latest.trade_date}`;
+        $("quote-change").className = change >= 0 ? "positive" : "negative";
+    }
+
+    function renderHistory() {
+        $("history-body").innerHTML = state.history.slice(-20).reverse().map(row => `
+            <tr>
+                <td class="mono">${row.trade_date}</td>
+                <td class="text-right">${number(row.open, 4)}</td>
+                <td class="text-right">${number(row.high, 4)}</td>
+                <td class="text-right">${number(row.low, 4)}</td>
+                <td class="text-right"><strong>${number(row.close, 4)}</strong></td>
+                <td class="text-right ${Number(row.change_percent || 0) >= 0 ? "positive" : "negative"}">
+                    ${Number(row.change_percent || 0) >= 0 ? "+" : ""}${number(row.change_percent)}%
+                </td>
+                <td class="text-right">${number(row.volume, 0)}</td>
+            </tr>`).join("");
+    }
+
+    function movingAverage(period) {
+        return state.history.map((_, index) => {
+            if (index < period - 1) return null;
+            const values = state.history.slice(index - period + 1, index + 1);
+            return values.reduce((sum, row) => sum + Number(row.close), 0) / period;
+        });
+    }
+
+    function renderChart() {
+        const element = $("market-chart");
+        if (!window.echarts || !state.history.length) {
+            state.chart?.dispose();
+            state.chart = null;
+            element.innerHTML = '<div class="empty-state">所选日期范围暂无行情数据</div>';
+            return;
+        }
+        if (!state.chart) {
+            element.replaceChildren();
+            state.chart = echarts.init(element);
+        }
+        const dates = state.history.map(row => row.trade_date);
+        state.chart.setOption({
+            animation: false,
+            tooltip: {trigger: "axis", axisPointer: {type: "cross"}},
+            legend: {top: 12, data: ["日线", "MA5", "MA20", "成交量"]},
+            grid: [
+                {left: 58, right: 54, top: 55, height: "60%"},
+                {left: 58, right: 54, top: "75%", height: "14%"},
+            ],
+            xAxis: [
+                {type: "category", data: dates, boundaryGap: true, axisLabel: {show: false}},
+                {type: "category", gridIndex: 1, data: dates, boundaryGap: true},
+            ],
+            yAxis: [
+                {scale: true, position: "right"},
+                {gridIndex: 1, scale: true, position: "right", splitLine: {show: false}},
+            ],
+            dataZoom: [{type: "inside", xAxisIndex: [0, 1], start: 0, end: 100}],
+            series: [
+                {
+                    name: "日线", type: "candlestick",
+                    data: state.history.map(row => [row.open, row.close, row.low, row.high]),
+                    itemStyle: {color: "#b53a3a", color0: "#198754", borderColor: "#b53a3a", borderColor0: "#198754"},
+                },
+                {name: "MA5", type: "line", symbol: "none", data: movingAverage(5), lineStyle: {width: 1, color: "#275ea8"}},
+                {name: "MA20", type: "line", symbol: "none", data: movingAverage(20), lineStyle: {width: 1, color: "#a45b12"}},
+                {
+                    name: "成交量", type: "bar", xAxisIndex: 1, yAxisIndex: 1,
+                    data: state.history.map(row => row.volume), itemStyle: {color: "#8c99aa"},
+                },
+            ],
+        }, true);
+    }
+
+    document.querySelectorAll("[data-range]").forEach(button =>
+        button.addEventListener("click", () => setRange(button.dataset.range))
+    );
+    [$("start-date"), $("end-date")].forEach(input => input.addEventListener("change", () => {
+        document.querySelectorAll("[data-range]").forEach(button => button.classList.remove("active"));
+        loadHistory(false);
+    }));
+    $("favorite-toggle").addEventListener("click", () =>
+        toggleFavorite().catch(error => showToast(error.message, "error"))
+    );
+    $("edit-tags").addEventListener("click", openTagDialog);
+    $("tag-form").addEventListener("submit", event =>
+        saveTags(event).catch(error => showToast(error.message, "error"))
+    );
+    document.querySelectorAll("[data-close-tag-dialog]").forEach(button =>
+        button.addEventListener("click", () => $("tag-dialog").close())
+    );
+    window.addEventListener("resize", () => state.chart?.resize());
+    setRange("1y", false);
+    loadAsset().catch(error => showToast(error.message, "error"));
+})();
+</script>
+{% endblock %}

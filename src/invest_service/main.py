@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 
-from .api import assets_router, exchange_rates_router, strategies_router
+from .api import assets_router, exchange_rates_router, strategies_router, tags_router
 from .config import Settings, get_settings
 from .database import Base, make_engine, make_session_factory
 from .mcp_server import build_mcp
@@ -27,6 +27,7 @@ from .services import (
     InvalidTrade,
     MarketService,
     StrategyNotFound,
+    TagNotFound,
 )
 from .web import router as web_router
 from .web.routes import WEB_DIR
@@ -62,6 +63,7 @@ def create_app(
             if not tags_table_existed:
                 market_service.backfill_default_tags()
             market_service.ensure_default_asset()
+            market_service.backfill_market_metadata()
         async with mcp.session_manager.run():
             try:
                 yield
@@ -126,6 +128,7 @@ def create_app(
 
     @app.exception_handler(AssetNotFound)
     @app.exception_handler(StrategyNotFound)
+    @app.exception_handler(TagNotFound)
     async def not_found_handler(_, exc):
         return _error_response(404, str(exc))
 
@@ -149,6 +152,7 @@ def create_app(
     app.include_router(assets_router, prefix="/api/v1")
     app.include_router(exchange_rates_router, prefix="/api/v1")
     app.include_router(strategies_router, prefix="/api/v1")
+    app.include_router(tags_router, prefix="/api/v1")
     app.include_router(web_router)
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
     app.mount("/mcp", mcp.streamable_http_app())

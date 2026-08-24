@@ -28,6 +28,49 @@ def prepare_legacy_schema(engine: Engine) -> None:
                     "NOT NULL DEFAULT TRUE"
                 )
             )
+    if "assets" in table_names and "favorite_since" not in columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE assets ADD COLUMN favorite_since DATE")
+            )
+    if "assets" in table_names and "favorite_price" not in columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE assets ADD COLUMN favorite_price NUMERIC(20, 6)")
+            )
+    if "tags" in table_names:
+        tag_columns = {item["name"] for item in inspector.get_columns("tags")}
+        with engine.begin() as connection:
+            if "position" not in tag_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE tags ADD COLUMN position INTEGER "
+                        "NOT NULL DEFAULT 0"
+                    )
+                )
+            if "is_pinned" not in tag_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE tags ADD COLUMN is_pinned BOOLEAN "
+                        "NOT NULL DEFAULT FALSE"
+                    )
+                )
+    if "asset_tags" in table_names:
+        asset_tag_columns = {
+            item["name"] for item in inspector.get_columns("asset_tags")
+        }
+        with engine.begin() as connection:
+            if "favorite_since" not in asset_tag_columns:
+                connection.execute(
+                    text("ALTER TABLE asset_tags ADD COLUMN favorite_since DATE")
+                )
+            if "favorite_price" not in asset_tag_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE asset_tags ADD COLUMN "
+                        "favorite_price NUMERIC(20, 6)"
+                    )
+                )
     if "trades" in table_names:
         trade_columns = {
             item["name"] for item in inspector.get_columns("trades")

@@ -13,11 +13,13 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Table,
     Text,
     UniqueConstraint,
+    false,
     true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -57,6 +59,8 @@ asset_tags = Table(
         ForeignKey("tags.name", ondelete="CASCADE"),
         primary_key=True,
     ),
+    Column("favorite_since", Date, nullable=True, default=date.today),
+    Column("favorite_price", Numeric(20, 6), nullable=True),
 )
 
 
@@ -64,6 +68,18 @@ class Tag(Base):
     __tablename__ = "tags"
 
     name: Mapped[str] = mapped_column(String(64), primary_key=True)
+    position: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+    is_pinned: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
+    )
     assets: Mapped[list["Asset"]] = relationship(
         secondary=asset_tags,
         back_populates="tags",
@@ -88,6 +104,8 @@ class Asset(Base):
         server_default=true(),
         index=True,
     )
+    favorite_since: Mapped[date | None] = mapped_column(Date, default=date.today)
+    favorite_price: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

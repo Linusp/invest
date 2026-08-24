@@ -352,7 +352,7 @@
         const rows = state.detail.positions;
         $("positions-body").innerHTML = rows.length ? rows.map(position => `
             <tr>
-                <td><a href="/market?symbol=${encodeURIComponent(position.asset.symbol)}">
+                <td><a href="/market/${encodeURIComponent(position.asset.symbol)}">
                     <div class="asset-name">${escapeHtml(position.asset.name)}</div>
                     <div class="asset-code mono">${escapeHtml(position.asset.symbol)}</div>
                 </a></td>

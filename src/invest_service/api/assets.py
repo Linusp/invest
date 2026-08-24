@@ -76,8 +76,16 @@ def search_assets(
 
 
 @router.get("/{symbol}", response_model=AssetRead)
-def get_asset(symbol: str, db: DB, provider: Provider):
-    return MarketService(db, provider).get_asset(symbol)
+def get_asset(
+    symbol: str,
+    db: DB,
+    provider: Provider,
+    request: Request,
+    response: Response,
+):
+    asset = MarketService(db, provider).get_asset(symbol)
+    _queue_missing_history(request, response, db, [asset])
+    return asset
 
 
 @router.put("/{symbol}/tags", response_model=AssetRead)
@@ -96,8 +104,13 @@ def update_asset_favorite(
     data: AssetFavoriteUpdate,
     db: DB,
     provider: Provider,
+    request: Request,
+    response: Response,
 ):
-    return MarketService(db, provider).set_favorite(symbol, data.is_favorite)
+    asset = MarketService(db, provider).set_favorite(symbol, data.is_favorite)
+    if asset.is_favorite:
+        _queue_missing_history(request, response, db, [asset])
+    return asset
 
 
 @router.get("/{symbol}/history", response_model=list[MarketBarRead])

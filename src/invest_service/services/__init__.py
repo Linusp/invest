@@ -1,5 +1,5 @@
 from .exchange_rate import ExchangeRateService, ExchangeRateUnavailable
-from .market import AssetNotFound, MarketService
+from .market import AssetNotFound, MarketService, TagNotFound
 from .strategy import InvalidTrade, StrategyNotFound, StrategyService
 
 __all__ = [
@@ -10,4 +10,5 @@ __all__ = [
     "MarketService",
     "StrategyNotFound",
     "StrategyService",
+    "TagNotFound",
 ]

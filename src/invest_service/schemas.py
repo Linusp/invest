@@ -49,9 +49,48 @@ class AssetRead(APIModel):
     currency: str
     provider_id: str | None
     is_favorite: bool
+    favorite_since: date | None
+    favorite_price: Decimal | None
     tags: list[TagRead]
     created_at: datetime
     updated_at: datetime
+
+
+class TagGroupRead(APIModel):
+    name: str
+    position: int
+    is_pinned: bool
+    asset_count: int
+
+
+class TagOrderUpdate(APIModel):
+    names: list[str] = Field(min_length=1)
+
+    @field_validator("names")
+    @classmethod
+    def validate_names(cls, names: list[str]) -> list[str]:
+        normalized = normalize_tag_names(names)
+        if len(normalized) != len(names):
+            raise ValueError("tag order must not contain duplicates")
+        return normalized
+
+
+class TagPinUpdate(APIModel):
+    is_pinned: bool
+
+
+class AssetMarketSummary(APIModel):
+    symbol: str
+    name: str
+    category: AssetCategory
+    currency: str
+    favorite_since: date | None
+    favorite_price: Decimal | None
+    favorite_return_percent: Decimal | None
+    latest_price: Decimal | None
+    latest_price_date: date | None
+    change: Decimal | None
+    change_percent: Decimal | None
 
 
 def normalize_tag_names(tags: list[str]) -> list[str]:

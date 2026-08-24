@@ -24,6 +24,18 @@ def test_upgrades_legacy_currency_and_opening_snapshot_schema(tmp_path):
             )
         )
         connection.execute(text("INSERT INTO assets VALUES ('600000.SH', '浦发银行')"))
+        connection.execute(text("CREATE TABLE tags (name VARCHAR(64) PRIMARY KEY)"))
+        connection.execute(text("INSERT INTO tags VALUES ('银行')"))
+        connection.execute(
+            text(
+                "CREATE TABLE asset_tags ("
+                "asset_symbol VARCHAR(32), tag_name VARCHAR(64), "
+                "PRIMARY KEY (asset_symbol, tag_name))"
+            )
+        )
+        connection.execute(
+            text("INSERT INTO asset_tags VALUES ('600000.SH', '银行')")
+        )
         connection.execute(
             text(
                 "CREATE TABLE strategies (id VARCHAR(36) PRIMARY KEY, currency VARCHAR(3))"
@@ -55,7 +67,18 @@ def test_upgrades_legacy_currency_and_opening_snapshot_schema(tmp_path):
     migrate_legacy_data(engine)
 
     asset_columns = {item["name"] for item in inspect(engine).get_columns("assets")}
-    assert {"currency", "is_favorite"} <= asset_columns
+    assert {
+        "currency",
+        "is_favorite",
+        "favorite_since",
+        "favorite_price",
+    } <= asset_columns
+    tag_columns = {item["name"] for item in inspect(engine).get_columns("tags")}
+    assert {"position", "is_pinned"} <= tag_columns
+    asset_tag_columns = {
+        item["name"] for item in inspect(engine).get_columns("asset_tags")
+    }
+    assert {"favorite_since", "favorite_price"} <= asset_tag_columns
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT is_favorite FROM assets WHERE symbol = '600000.SH'")

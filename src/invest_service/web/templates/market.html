@@ -1,451 +1,228 @@
 {% extends "base.html" %}
 {% set active_page = "market" %}
-{% block title %}行情 · Invest{% endblock %}
-{% block head %}
-<script src="/static/vendor/echarts-5.4.3.min.js"></script>
-{% endblock %}
+{% block title %}自选行情 · Invest{% endblock %}
 {% block content %}
+<div class="page-heading">
+    <div>
+        <h1>自选行情</h1>
+        <p>按标签浏览自选标的；置顶标签会成为默认分组。</p>
+    </div>
+</div>
 {% if market_provider_warning %}
-<div class="panel" role="alert" style="margin-bottom:16px;color:#a33">
-    {{ market_provider_warning }}
+<div class="provider-warning">
+    <i data-lucide="triangle-alert"></i><span>{{ market_provider_warning }}</span>
 </div>
 {% endif %}
-<section class="page-heading">
-    <div>
-        <h1>市场行情</h1>
-        <p>个股、ETF 与指数日线</p>
-    </div>
-    <div class="actions">
-        <label class="field" style="width: 150px">
-            <span class="label">开始日期</span>
-            <input id="start-date" class="input" type="date">
-        </label>
-        <label class="field" style="width: 150px">
-            <span class="label">结束日期</span>
-            <input id="end-date" class="input" type="date">
-        </label>
-    </div>
-</section>
 
-<form id="market-search" class="market-toolbar">
-    <input id="market-query" class="input" type="search" placeholder="代码或名称" autocomplete="off">
-    <select id="market-category" class="select" aria-label="标的类型">
-        <option value="">全部类型</option>
-        <option value="stock">个股</option>
-        <option value="etf">ETF</option>
-        <option value="index">指数</option>
-    </select>
-    <button class="button primary" type="submit">
-        <i data-lucide="search"></i><span>搜索</span>
-    </button>
-</form>
-
-<div class="market-layout">
-    <aside class="panel">
+<div class="tag-market-layout">
+    <aside class="panel tag-sidebar">
         <div class="panel-header">
-            <h2 class="panel-title">标的</h2>
-            <span id="asset-count" class="badge">0</span>
+            <h2 class="panel-title">标签分组</h2>
+            <span id="tag-count" class="badge">0</span>
         </div>
-        <div id="asset-results" class="asset-results"></div>
+        <div id="tag-list" class="tag-list"></div>
     </aside>
 
-    <section class="panel" id="quote-panel">
-        <div id="quote-empty" class="empty-state">
-            <div><i data-lucide="chart-no-axes-combined"></i><div>选择一个标的</div></div>
-        </div>
-        <div id="quote-content" hidden>
-            <div class="quote-header">
-                <div class="quote-title">
-                    <h2 id="quote-name"></h2>
-                    <p><span id="quote-symbol" class="mono"></span> · <span id="quote-category"></span> · <span id="quote-currency" class="mono"></span></p>
-                    <div id="quote-tags" class="quote-tags"></div>
-                </div>
-                <div class="actions">
-                    <button id="favorite-toggle" class="button" type="button"></button>
-                    <button id="edit-tags" class="button" type="button">
-                        <i data-lucide="tags"></i><span>管理标签</span>
-                    </button>
-                    <div class="quote-price sensitive">
-                        <strong id="quote-close">--</strong>
-                        <span id="quote-change">--</span>
-                    </div>
-                </div>
+    <section class="panel">
+        <div class="panel-header tag-table-heading">
+            <div>
+                <h2 id="selected-tag-name" class="panel-title">选择标签</h2>
+                <div id="selected-tag-meta" class="muted table-caption"></div>
             </div>
-            <div id="market-chart" class="chart"></div>
-            <div class="table-wrap">
-                <table class="data-table">
-                    <thead>
-                        <tr>
-                            <th>日期</th><th class="text-right">开盘</th><th class="text-right">最高</th>
-                            <th class="text-right">最低</th><th class="text-right">收盘</th>
-                            <th class="text-right">涨跌幅</th><th class="text-right">成交量</th>
-                        </tr>
-                    </thead>
-                    <tbody id="history-body"></tbody>
-                </table>
+        </div>
+        <div class="table-wrap">
+            <table class="data-table tag-asset-table">
+                <thead>
+                    <tr>
+                        <th><button type="button" data-sort="name">标的</button></th>
+                        <th><button type="button" data-sort="favorite_since">自选日</button></th>
+                        <th class="text-right"><button type="button" data-sort="favorite_return_percent">自选至今收益</button></th>
+                        <th class="text-right"><button type="button" data-sort="favorite_price">自选价格</button></th>
+                        <th class="text-right"><button type="button" data-sort="change_percent">当日涨跌幅</button></th>
+                        <th class="text-right"><button type="button" data-sort="latest_price">当日价格</button></th>
+                    </tr>
+                </thead>
+                <tbody id="tag-assets-body"></tbody>
+            </table>
+            <div id="tag-assets-empty" class="empty-state" hidden>
+                <div><i data-lucide="list-filter"></i><p>这个标签下还没有自选标的</p></div>
             </div>
         </div>
     </section>
 </div>
-
-<dialog id="tag-dialog">
-    <form id="tag-form">
-        <div class="dialog-header">
-            <h2>管理标的标签</h2>
-            <button class="icon-button" type="button" data-close-tag-dialog aria-label="关闭"><i data-lucide="x"></i></button>
-        </div>
-        <div class="dialog-body">
-            <label class="field">
-                <span class="label">标签</span>
-                <input id="tag-input" class="input" type="text" maxlength="1300" placeholder="多个标签用逗号分隔">
-            </label>
-            <div class="muted" style="font-size:12px">一个标的最多 20 个标签；可用中英文逗号或换行分隔。</div>
-        </div>
-        <div class="dialog-footer">
-            <button class="button" type="button" data-close-tag-dialog>取消</button>
-            <button class="button primary" type="submit">保存</button>
-        </div>
-    </form>
-</dialog>
 {% endblock %}
 {% block scripts %}
 <script>
 (() => {
     const state = {
-        assets: [], selected: null, history: [], chart: null,
-        historyPoll: null, historyPollAttempts: 0, view: "favorites",
+        tags: [], selectedTag: null, assets: [],
+        sortKey: "name", sortDirection: "asc",
     };
     const $ = (id) => document.getElementById(id);
-    const categoryLabel = {stock: "个股", etf: "ETF", index: "指数"};
-    const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({
+    const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, character => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
-    })[c]);
-    const tagNames = (asset) => (asset?.tags || []).map(tag =>
-        typeof tag === "string" ? tag : tag.name
-    ).filter(Boolean);
+    })[character]);
+    const categoryLabel = {stock: "个股", etf: "ETF", index: "指数"};
+    const signedPercent = (value) => {
+        if (value == null) return "--";
+        const numeric = Number(value);
+        return `${numeric >= 0 ? "+" : ""}${number(numeric)}%`;
+    };
+    const price = (value, currency) => value == null ? "--" :
+        new Intl.NumberFormat("zh-CN", {
+            style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 4,
+        }).format(Number(value));
+    const tone = (value) => value == null ? "" : Number(value) >= 0 ? "positive" : "negative";
 
-    function renderAssets() {
-        $("asset-count").textContent = state.assets.length;
-        const groups = new Map();
-        state.assets.forEach(asset => {
-            const names = tagNames(asset);
-            (names.length ? names : ["未分类"]).forEach(name => {
-                if (!groups.has(name)) groups.set(name, []);
-                groups.get(name).push(asset);
-            });
+    function renderTags() {
+        $("tag-count").textContent = state.tags.length;
+        $("tag-list").innerHTML = state.tags.length ? state.tags.map((tag, index) => `
+            <div class="tag-list-item ${tag.name === state.selectedTag ? "active" : ""}">
+                <button class="tag-select" type="button" data-select-tag="${escapeHtml(tag.name)}">
+                    <span>${tag.is_pinned ? '<i data-lucide="pin"></i>' : '<span class="tag-order-dot"></span>'}</span>
+                    <strong>${escapeHtml(tag.name)}</strong>
+                    <span class="tag-asset-count">${tag.asset_count}</span>
+                </button>
+                <span class="tag-order-actions">
+                    <button type="button" data-pin-tag="${escapeHtml(tag.name)}" data-pin-value="${!tag.is_pinned}"
+                            title="${tag.is_pinned ? "取消置顶" : "置顶"}" aria-label="${tag.is_pinned ? "取消置顶" : "置顶"}">
+                        <i data-lucide="${tag.is_pinned ? "pin-off" : "pin"}"></i>
+                    </button>
+                    <button type="button" data-move-tag="${escapeHtml(tag.name)}" data-delta="-1"
+                            ${index === 0 ? "disabled" : ""} title="上移" aria-label="上移">
+                        <i data-lucide="chevron-up"></i>
+                    </button>
+                    <button type="button" data-move-tag="${escapeHtml(tag.name)}" data-delta="1"
+                            ${index === state.tags.length - 1 ? "disabled" : ""} title="下移" aria-label="下移">
+                        <i data-lucide="chevron-down"></i>
+                    </button>
+                </span>
+            </div>`).join("") :
+            '<div class="empty-state compact"><div>暂无标签分组</div></div>';
+        $("tag-list").querySelectorAll("[data-select-tag]").forEach(button => {
+            button.addEventListener("click", () => selectTag(button.dataset.selectTag));
         });
-        $("asset-results").innerHTML = state.assets.length ? [...groups.entries()]
-            .sort(([left], [right]) => left.localeCompare(right, "zh-CN"))
-            .map(([name, assets]) => `
-                <details class="asset-group">
-                    <summary>
-                        <span class="asset-group-name"><span class="asset-group-dot"></span>${escapeHtml(name)}</span>
-                        <span class="asset-group-meta">
-                            <span class="asset-group-count">${assets.length}</span>
-                            <i class="asset-group-chevron" data-lucide="chevron-right"></i>
-                        </span>
-                    </summary>
-                    ${assets.map(asset => `
-                        <div class="asset-row ${state.selected?.symbol === asset.symbol ? "active" : ""} ${asset.is_favorite ? "" : "hidden-favorite"}">
-                            <button class="asset-row-main" type="button" data-symbol="${escapeHtml(asset.symbol)}">
-                                <span><strong>${escapeHtml(asset.name)}</strong><small class="mono">${escapeHtml(asset.symbol)}</small></span>
-                                <span class="badge">${asset.is_favorite ? escapeHtml(asset.currency) : "未自选"}</span>
-                            </button>
-                            <button class="asset-row-action" type="button"
-                                    data-favorite-symbol="${escapeHtml(asset.symbol)}"
-                                    data-favorite-value="${asset.is_favorite ? "false" : "true"}"
-                                    title="${asset.is_favorite ? "移出自选" : "加入自选"}"
-                                    aria-label="${asset.is_favorite ? "移出自选" : "加入自选"}">
-                                <i data-lucide="${asset.is_favorite ? "x" : "plus"}"></i>
-                            </button>
-                        </div>`).join("")}
-                </details>`).join("") :
-                '<div class="empty-state" style="min-height:180px"><div>暂无标的</div></div>';
-        $("asset-results").querySelectorAll("[data-symbol]").forEach(button => {
-            button.addEventListener("click", () => selectAsset(
-                state.assets.find(asset => asset.symbol === button.dataset.symbol)
-            ));
+        $("tag-list").querySelectorAll("[data-pin-tag]").forEach(button => {
+            button.addEventListener("click", () => togglePin(
+                button.dataset.pinTag,
+                button.dataset.pinValue === "true",
+            ).catch(error => showToast(error.message, "error")));
         });
-        $("asset-results").querySelectorAll("[data-favorite-symbol]").forEach(button => {
-            button.addEventListener("click", event => toggleFavorite(
-                button.dataset.favoriteSymbol,
-                button.dataset.favoriteValue === "true",
-                event,
+        $("tag-list").querySelectorAll("[data-move-tag]").forEach(button => {
+            button.addEventListener("click", () => moveTag(
+                button.dataset.moveTag,
+                Number(button.dataset.delta),
             ).catch(error => showToast(error.message, "error")));
         });
         window.lucide?.createIcons();
     }
 
-    async function loadAssets() {
-        try {
-            state.assets = await api("/assets?limit=200");
-            state.view = "favorites";
-            renderAssets();
-            const params = new URLSearchParams(location.search);
-            const explicit = params.get("symbol") || params.get("code");
-            const requested = explicit || "000001.SH";
-            let asset = state.assets.find(item => item.symbol === requested.toUpperCase());
-            if (!asset && explicit) {
-                try { asset = await api("/assets/" + encodeURIComponent(requested)); } catch (_) {}
-            }
-            if (asset) await selectAsset(asset);
-            else if (state.assets.length) await selectAsset(state.assets[0]);
-        } catch (error) { showToast(error.message, "error"); }
+    function compareAssets(left, right) {
+        const key = state.sortKey;
+        const leftValue = left[key];
+        const rightValue = right[key];
+        if (leftValue == null && rightValue == null) return 0;
+        if (leftValue == null) return 1;
+        if (rightValue == null) return -1;
+        const result = key === "name" || key === "favorite_since"
+            ? String(leftValue).localeCompare(String(rightValue), "zh-CN")
+            : Number(leftValue) - Number(rightValue);
+        return state.sortDirection === "asc" ? result : -result;
     }
 
-    async function searchAssets(event) {
-        event.preventDefault();
-        const query = $("market-query").value.trim();
-        const category = $("market-category").value;
-        if (!query) {
-            const suffix = category ? "?category=" + category + "&limit=200" : "?limit=200";
-            state.assets = await api("/assets" + suffix);
-            state.view = "favorites";
-        } else {
-            const params = new URLSearchParams({q: query, limit: "50"});
-            if (category) params.set("category", category);
-            state.assets = await api("/assets/search?" + params);
-            state.view = "search";
-        }
-        renderAssets();
-        if (state.assets.length) await selectAsset(state.assets[0]);
-    }
-
-    async function selectAsset(asset) {
-        if (!asset) return;
-        state.selected = asset;
-        renderAssets();
-        history.replaceState({}, "", "/market?symbol=" + encodeURIComponent(asset.symbol));
-        $("quote-empty").hidden = true;
-        $("quote-content").hidden = false;
-        $("quote-name").textContent = asset.name;
-        $("quote-symbol").textContent = asset.symbol;
-        $("quote-category").textContent = categoryLabel[asset.category] || asset.category;
-        $("quote-currency").textContent = asset.currency;
-        renderSelectedTags();
-        renderFavoriteAction();
-        stopHistoryPolling();
-        await loadHistory(true);
-    }
-
-    function renderSelectedTags() {
-        const names = tagNames(state.selected);
-        $("quote-tags").innerHTML = names.length
-            ? names.map(name => `<span class="tag-chip">${escapeHtml(name)}</span>`).join("")
-            : '<span class="muted">未分类</span>';
-    }
-
-    function renderFavoriteAction() {
-        if (!state.selected) return;
-        const favorite = state.selected.is_favorite;
-        $("favorite-toggle").innerHTML = favorite
-            ? '<i data-lucide="star-off"></i><span>移出自选</span>'
-            : '<i data-lucide="star"></i><span>加入自选</span>';
-        $("favorite-toggle").classList.toggle("danger", favorite);
+    function renderAssets() {
+        const rows = [...state.assets].sort(compareAssets);
+        $("selected-tag-meta").textContent = `${rows.length} 个自选标的`;
+        $("tag-assets-empty").hidden = rows.length > 0;
+        $("tag-assets-body").innerHTML = rows.map(asset => `
+            <tr>
+                <td>
+                    <a class="table-asset-link" href="/market/${encodeURIComponent(asset.symbol)}">
+                        <span><strong class="asset-name">${escapeHtml(asset.name)}</strong><small class="asset-code mono">${escapeHtml(asset.symbol)}</small></span>
+                        <span class="badge">${categoryLabel[asset.category] || escapeHtml(asset.category)}</span>
+                    </a>
+                </td>
+                <td class="mono">${asset.favorite_since || "--"}</td>
+                <td class="text-right ${tone(asset.favorite_return_percent)}"><strong>${signedPercent(asset.favorite_return_percent)}</strong></td>
+                <td class="text-right">${price(asset.favorite_price, asset.currency)}</td>
+                <td class="text-right ${tone(asset.change_percent)}">${signedPercent(asset.change_percent)}</td>
+                <td class="text-right">
+                    <strong>${price(asset.latest_price, asset.currency)}</strong>
+                    <small class="latest-price-date">${asset.latest_price_date || "暂无行情"}</small>
+                </td>
+            </tr>`).join("");
+        document.querySelectorAll("[data-sort]").forEach(button => {
+            button.classList.toggle("active", button.dataset.sort === state.sortKey);
+            button.dataset.direction = button.dataset.sort === state.sortKey
+                ? state.sortDirection : "";
+        });
         window.lucide?.createIcons();
     }
 
-    function clearSelection() {
-        stopHistoryPolling();
-        state.selected = null;
-        state.history = [];
-        $("quote-content").hidden = true;
-        $("quote-empty").hidden = false;
-        history.replaceState({}, "", "/market");
-        renderAssets();
-    }
-
-    async function toggleFavorite(symbol, isFavorite, event = null) {
-        event?.stopPropagation();
-        const updated = await api(
-            "/assets/" + encodeURIComponent(symbol) + "/favorite",
-            {method: "PUT", body: JSON.stringify({is_favorite: isFavorite})},
-        );
-        if (state.view === "favorites" && !isFavorite) {
-            state.assets = state.assets.filter(asset => asset.symbol !== symbol);
-        } else {
-            state.assets = state.assets.map(asset => asset.symbol === symbol ? updated : asset);
-        }
-
-        if (state.selected?.symbol === symbol) {
-            if (state.view === "favorites" && !isFavorite) {
-                const next = state.assets.find(asset => asset.symbol === "000001.SH")
-                    || state.assets[0];
-                if (next) await selectAsset(next);
-                else clearSelection();
-            } else {
-                state.selected = updated;
-                renderAssets();
-                renderFavoriteAction();
-            }
-        } else {
-            renderAssets();
-        }
-        showToast(isFavorite ? "已加入自选" : "已移出自选，历史数据仍保留", "success");
-    }
-
-    function openTagDialog() {
-        if (!state.selected) return;
-        $("tag-input").value = tagNames(state.selected).join(", ");
-        $("tag-dialog").showModal();
-        $("tag-input").focus();
-    }
-
-    async function saveTags(event) {
-        event.preventDefault();
-        if (!state.selected) return;
-        const tags = $("tag-input").value.split(/[,，\n]/)
-            .map(value => value.trim()).filter(Boolean);
-        const updated = await api(
-            "/assets/" + encodeURIComponent(state.selected.symbol) + "/tags",
-            {method: "PUT", body: JSON.stringify({tags})},
-        );
-        state.assets = state.assets.map(asset => asset.symbol === updated.symbol ? updated : asset);
-        state.selected = updated;
-        renderAssets();
-        renderSelectedTags();
-        $("tag-dialog").close();
-        showToast("标签已保存", "success");
-    }
-
-    async function loadHistory(pollWhenEmpty = false) {
-        if (!state.selected) return;
-        $("quote-panel").classList.add("loading");
+    async function selectTag(name, updateLocation = true) {
+        state.selectedTag = name;
+        renderTags();
+        $("selected-tag-name").textContent = name;
+        $("tag-assets-body").closest("section").classList.add("loading");
         try {
-            const params = new URLSearchParams({limit: "2000"});
-            if ($("start-date").value) params.set("start_date", $("start-date").value);
-            if ($("end-date").value) params.set("end_date", $("end-date").value);
-            state.history = await api(
-                "/assets/" + encodeURIComponent(state.selected.symbol) + "/history?" + params
-            );
-            renderQuote();
-            renderChart();
-            renderHistory();
-            if (state.history.length) {
-                stopHistoryPolling();
-            } else if (pollWhenEmpty) {
-                startHistoryPolling(state.selected.symbol);
+            state.assets = await api("/tags/" + encodeURIComponent(name) + "/assets");
+            renderAssets();
+            if (updateLocation) {
+                const url = new URL(location.href);
+                url.searchParams.set("tag", name);
+                history.replaceState({}, "", url);
             }
-        } catch (error) {
-            showToast(error.message, "error");
         } finally {
-            $("quote-panel").classList.remove("loading");
+            $("tag-assets-body").closest("section").classList.remove("loading");
         }
     }
 
-    function startHistoryPolling(symbol) {
-        stopHistoryPolling();
-        state.historyPollAttempts = 0;
-        $("quote-change").textContent = "行情正在后台更新…";
-        state.historyPoll = window.setInterval(async () => {
-            if (state.selected?.symbol !== symbol || state.historyPollAttempts++ >= 20) {
-                stopHistoryPolling();
-                return;
-            }
-            await loadHistory(false);
-        }, 1500);
-    }
-
-    function stopHistoryPolling() {
-        if (state.historyPoll) window.clearInterval(state.historyPoll);
-        state.historyPoll = null;
-    }
-
-    function renderQuote() {
-        const latest = state.history.at(-1);
-        if (!latest) {
-            $("quote-close").textContent = "--";
-            $("quote-change").textContent = "暂无行情";
-            return;
-        }
-        const previous = latest.previous_close ?? state.history.at(-2)?.close;
-        const change = previous ? Number(latest.close) - Number(previous) : 0;
-        const percent = previous ? change / Number(previous) * 100 : Number(latest.change_percent || 0);
-        $("quote-close").textContent = number(latest.close, 4);
-        $("quote-change").textContent = `${change >= 0 ? "+" : ""}${number(change, 4)} (${percent >= 0 ? "+" : ""}${percent.toFixed(2)}%) · ${latest.trade_date}`;
-        $("quote-change").className = change >= 0 ? "positive" : "negative";
-    }
-
-    function renderHistory() {
-        $("history-body").innerHTML = state.history.slice(-12).reverse().map(row => `
-            <tr>
-                <td class="mono">${row.trade_date}</td>
-                <td class="text-right sensitive">${number(row.open, 4)}</td>
-                <td class="text-right sensitive">${number(row.high, 4)}</td>
-                <td class="text-right sensitive">${number(row.low, 4)}</td>
-                <td class="text-right sensitive"><strong>${number(row.close, 4)}</strong></td>
-                <td class="text-right ${Number(row.change_percent || 0) >= 0 ? "positive" : "negative"}">
-                    ${Number(row.change_percent || 0) >= 0 ? "+" : ""}${number(row.change_percent)}%
-                </td>
-                <td class="text-right">${number(row.volume, 0)}</td>
-            </tr>`).join("");
-    }
-
-    function movingAverage(period) {
-        return state.history.map((_, index) => {
-            if (index < period - 1) return null;
-            const values = state.history.slice(index - period + 1, index + 1);
-            return values.reduce((sum, row) => sum + Number(row.close), 0) / period;
+    async function moveTag(name, delta) {
+        const index = state.tags.findIndex(tag => tag.name === name);
+        const target = index + delta;
+        if (index < 0 || target < 0 || target >= state.tags.length) return;
+        const names = state.tags.map(tag => tag.name);
+        [names[index], names[target]] = [names[target], names[index]];
+        state.tags = await api("/tags/order", {
+            method: "PUT", body: JSON.stringify({names}),
         });
+        renderTags();
     }
 
-    function renderChart() {
-        const element = $("market-chart");
-        if (!window.echarts || !state.history.length) {
-            element.innerHTML = '<div class="empty-state">暂无行情数据</div>';
+    async function togglePin(name, isPinned) {
+        state.tags = await api("/tags/" + encodeURIComponent(name) + "/pin", {
+            method: "PUT", body: JSON.stringify({is_pinned: isPinned}),
+        });
+        renderTags();
+        showToast(isPinned ? `已置顶“${name}”` : `已取消置顶“${name}”`, "success");
+    }
+
+    async function loadTags() {
+        state.tags = await api("/tags");
+        renderTags();
+        if (!state.tags.length) {
+            $("tag-assets-empty").hidden = false;
             return;
         }
-        state.chart ||= echarts.init(element);
-        const dates = state.history.map(row => row.trade_date);
-        state.chart.setOption({
-            animation: false,
-            tooltip: {trigger: "axis", axisPointer: {type: "cross"}},
-            legend: {top: 12, data: ["日线", "MA5", "MA20", "成交量"]},
-            grid: [
-                {left: 58, right: 54, top: 55, height: "60%"},
-                {left: 58, right: 54, top: "75%", height: "14%"},
-            ],
-            xAxis: [
-                {type: "category", data: dates, boundaryGap: true, axisLabel: {show: false}},
-                {type: "category", gridIndex: 1, data: dates, boundaryGap: true},
-            ],
-            yAxis: [
-                {scale: true, position: "right"},
-                {gridIndex: 1, scale: true, position: "right", splitLine: {show: false}},
-            ],
-            dataZoom: [{type: "inside", xAxisIndex: [0, 1], start: 60, end: 100}],
-            series: [
-                {
-                    name: "日线", type: "candlestick",
-                    data: state.history.map(row => [row.open, row.close, row.low, row.high]),
-                    itemStyle: {color: "#b53a3a", color0: "#198754", borderColor: "#b53a3a", borderColor0: "#198754"},
-                },
-                {name: "MA5", type: "line", symbol: "none", data: movingAverage(5), lineStyle: {width: 1, color: "#275ea8"}},
-                {name: "MA20", type: "line", symbol: "none", data: movingAverage(20), lineStyle: {width: 1, color: "#a45b12"}},
-                {
-                    name: "成交量", type: "bar", xAxisIndex: 1, yAxisIndex: 1,
-                    data: state.history.map(row => row.volume),
-                    itemStyle: {color: "#8c99aa"},
-                },
-            ],
-        }, true);
+        const requested = new URLSearchParams(location.search).get("tag");
+        const initial = state.tags.some(tag => tag.name === requested)
+            ? requested : state.tags[0].name;
+        await selectTag(initial, false);
     }
 
-    $("market-search").addEventListener("submit", event => searchAssets(event).catch(error => showToast(error.message, "error")));
-    $("edit-tags").addEventListener("click", openTagDialog);
-    $("favorite-toggle").addEventListener("click", () => {
-        if (!state.selected) return;
-        toggleFavorite(state.selected.symbol, !state.selected.is_favorite)
-            .catch(error => showToast(error.message, "error"));
+    document.querySelectorAll("[data-sort]").forEach(button => {
+        button.addEventListener("click", () => {
+            const key = button.dataset.sort;
+            if (state.sortKey === key) {
+                state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
+            } else {
+                state.sortKey = key;
+                state.sortDirection = key === "name" || key === "favorite_since" ? "asc" : "desc";
+            }
+            renderAssets();
+        });
     });
-    $("tag-form").addEventListener("submit", event => saveTags(event).catch(error => showToast(error.message, "error")));
-    document.querySelectorAll("[data-close-tag-dialog]").forEach(button =>
-        button.addEventListener("click", () => $("tag-dialog").close())
-    );
-    $("start-date").addEventListener("change", loadHistory);
-    $("end-date").addEventListener("change", loadHistory);
-    window.addEventListener("resize", () => state.chart?.resize());
-    loadAssets();
+    loadTags().catch(error => showToast(error.message, "error"));
 })();
 </script>
 {% endblock %}

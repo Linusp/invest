@@ -1,3 +1,6 @@
+from datetime import date
+from decimal import Decimal
+
 from invest_service.celery_app import (
     build_beat_schedule,
     run_asset_update,
@@ -7,7 +10,7 @@ from invest_service.celery_app import (
     update_market_data,
 )
 from invest_service.config import Settings
-from invest_service.models import Asset, AssetCategory, MarketBar
+from invest_service.models import Asset, AssetCategory, MarketBar, asset_tags
 from invest_service.providers.base import infer_default_tags
 from invest_service.services import MarketService
 
@@ -79,6 +82,8 @@ def test_asset_can_be_hidden_and_restored_without_deleting_data(client):
 
     assert hidden.status_code == 200
     assert hidden.json()["is_favorite"] is False
+    assert hidden.json()["favorite_since"] is None
+    assert hidden.json()["favorite_price"] is None
     assert all(
         item["symbol"] != "600000.SH"
         for item in client.get("/api/v1/assets").json()
@@ -96,6 +101,8 @@ def test_asset_can_be_hidden_and_restored_without_deleting_data(client):
 
     assert restored.status_code == 200
     assert restored.json()["is_favorite"] is True
+    assert restored.json()["favorite_since"] is not None
+    assert restored.json()["favorite_price"] == "110.000000"
     assert any(
         item["symbol"] == "600000.SH"
         for item in client.get("/api/v1/assets").json()
@@ -188,17 +195,96 @@ def test_celery_single_asset_job(session_factory, provider):
     assert result["created"] == 2
 
 
-def test_web_market_page(client):
+def test_tag_groups_can_be_reordered_pinned_and_summarized(client):
+    client.get("/api/v1/assets/search", params={"q": "600000"})
+    client.get("/api/v1/assets/search", params={"q": "510300"})
+    client.get("/api/v1/assets/search", params={"q": "000300"})
+
+    tags = client.get("/api/v1/tags").json()
+    names = [tag["name"] for tag in tags]
+    assert {"指数", "银行", "ETF"} <= set(names)
+    assert next(tag for tag in tags if tag["name"] == "银行")["asset_count"] == 1
+
+    reordered = client.put(
+        "/api/v1/tags/order",
+        json={"names": list(reversed(names))},
+    )
+    assert reordered.status_code == 200
+    assert [tag["name"] for tag in reordered.json()] == list(reversed(names))
+
+    pinned = client.put(
+        "/api/v1/tags/%E9%93%B6%E8%A1%8C/pin",
+        json={"is_pinned": True},
+    )
+    assert pinned.status_code == 200
+    assert pinned.json()[0]["name"] == "银行"
+    assert pinned.json()[0]["is_pinned"] is True
+
+    with client.app.state.session_factory() as session:
+        service = MarketService(session, client.app.state.market_provider)
+        service.sync_asset("600000.SH")
+        session.execute(
+            asset_tags.update()
+            .where(
+                asset_tags.c.asset_symbol == "600000.SH",
+                asset_tags.c.tag_name == "银行",
+            )
+            .values(favorite_since=date(2026, 7, 1), favorite_price=100)
+        )
+        session.commit()
+
+    updated_tags = client.put(
+        "/api/v1/assets/600000.SH/tags",
+        json={"tags": ["银行", "红利"]},
+    )
+    assert updated_tags.status_code == 200
+
+    rows = client.get("/api/v1/tags/%E9%93%B6%E8%A1%8C/assets").json()
+    assert len(rows) == 1
+    assert rows[0]["symbol"] == "600000.SH"
+    assert rows[0]["favorite_since"] == "2026-07-01"
+    assert rows[0]["favorite_price"] == "100.000000"
+    assert Decimal(rows[0]["favorite_return_percent"]) == Decimal("10")
+    assert rows[0]["latest_price"] == "110.000000"
+    assert rows[0]["latest_price_date"] == "2026-07-10"
+    assert rows[0]["change_percent"] == "1.000000"
+
+    later_group = client.get("/api/v1/tags/%E7%BA%A2%E5%88%A9/assets").json()
+    assert later_group[0]["favorite_since"] != rows[0]["favorite_since"]
+    assert later_group[0]["favorite_price"] == "110.000000"
+    assert Decimal(later_group[0]["favorite_return_percent"]) == Decimal("0")
+
+
+def test_web_market_group_and_asset_pages(client):
     page = client.get("/market")
     assert page.status_code == 200
-    assert "市场行情" in page.text
-    assert "管理标的标签" in page.text
-    assert "移出自选" in page.text
-    assert '|| "000001.SH"' in page.text
-    assert '<details class="asset-group">' in page.text
+    assert "自选行情" in page.text
+    assert "标签分组" in page.text
+    assert 'data-sort="favorite_since"' in page.text
+    assert 'data-sort="favorite_return_percent"' in page.text
+    assert 'id="global-market-query"' in page.text
     assert "/api/v1" in page.text
     assert "https://unpkg.com" not in page.text
     assert "https://cdn.bootcdn.net" not in page.text
+
+    client.get("/api/v1/assets/search", params={"q": "600000"})
+    detail = client.get("/market/600000.SH")
+    assert detail.status_code == 200
+    assert "行情首页" in detail.text
+    assert "返回标签分组" not in detail.text
+    assert "管理标的标签" in detail.text
+    for label in (
+        "本周", "本月", "近一月", "近三月", "近半年",
+        "今年以来", "近一年", "近三年", "近五年",
+    ):
+        assert label in detail.text
+    assert 'id="global-market-query"' in detail.text
+    assert 'id="market-query"' not in detail.text
+
+    legacy = client.get("/market?symbol=600000.SH", follow_redirects=False)
+    assert legacy.status_code in (302, 307)
+    assert legacy.headers["location"] == "/market/600000.SH"
+
     assert client.get("/static/app.css").status_code == 200
     assert client.get("/static/vendor/lucide-0.468.0.min.js").status_code == 200
     echarts = client.get(

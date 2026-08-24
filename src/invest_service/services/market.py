@@ -1,15 +1,26 @@
 from datetime import date, timedelta
+from decimal import Decimal
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from ..models import Asset, AssetCategory, MarketBar, Tag
+from ..models import Asset, AssetCategory, MarketBar, Tag, asset_tags
 from ..providers import MarketDataProvider, ProviderAsset
 from ..providers.base import infer_currency, infer_default_tags
-from ..schemas import AssetCreate, BulkSyncResult, MarketSyncResult
+from ..schemas import (
+    AssetCreate,
+    AssetMarketSummary,
+    BulkSyncResult,
+    MarketSyncResult,
+    TagGroupRead,
+)
 
 
 class AssetNotFound(LookupError):
+    pass
+
+
+class TagNotFound(LookupError):
     pass
 
 
@@ -62,7 +73,8 @@ class MarketService:
                 data.tags or infer_default_tags(symbol, data.category),
             )
         else:
-            asset.is_favorite = True
+            if not asset.is_favorite:
+                self._set_favorite(asset, True)
             asset.name = data.name.strip()
             asset.category = data.category
             if data.currency:
@@ -75,14 +87,114 @@ class MarketService:
     def update_tags(self, symbol: str, names: list[str]) -> Asset:
         asset = self.get_asset(symbol)
         self._set_tags(asset, names)
+        self.session.flush()
+        self._capture_tag_prices(asset)
         self.session.commit()
         return asset
 
     def set_favorite(self, symbol: str, is_favorite: bool) -> Asset:
         asset = self.get_asset(symbol)
-        asset.is_favorite = is_favorite
+        self._set_favorite(asset, is_favorite)
         self.session.commit()
         return asset
+
+    def _set_favorite(self, asset: Asset, is_favorite: bool) -> None:
+        was_favorite = asset.is_favorite
+        if not is_favorite:
+            asset.is_favorite = False
+            asset.favorite_since = None
+            asset.favorite_price = None
+            return
+        if not asset.is_favorite or asset.favorite_since is None:
+            asset.favorite_since = date.today()
+            asset.favorite_price = None
+        asset.is_favorite = True
+        self._capture_favorite_price(asset)
+        if not was_favorite:
+            self.session.flush()
+            self._reset_tag_snapshots(asset)
+
+    def _capture_favorite_price(self, asset: Asset) -> None:
+        if not asset.is_favorite or asset.favorite_price is not None:
+            return
+        favorite_since = asset.favorite_since or date.today()
+        asset.favorite_since = favorite_since
+        asset.favorite_price = self._price_on_or_before(
+            asset.symbol,
+            favorite_since,
+        )
+
+    def _price_on_or_before(
+        self,
+        symbol: str,
+        snapshot_date: date,
+    ) -> Decimal | None:
+        price = self.session.scalar(
+            select(MarketBar.close)
+            .where(
+                MarketBar.asset_symbol == symbol,
+                MarketBar.trade_date <= snapshot_date,
+            )
+            .order_by(MarketBar.trade_date.desc())
+            .limit(1)
+        )
+        if price is None:
+            price = self.session.scalar(
+                select(MarketBar.close)
+                .where(MarketBar.asset_symbol == symbol)
+                .order_by(MarketBar.trade_date.asc())
+                .limit(1)
+            )
+        return price
+
+    def _capture_tag_prices(
+        self,
+        asset: Asset,
+        default_since: date | None = None,
+    ) -> None:
+        memberships = self.session.execute(
+            select(
+                asset_tags.c.tag_name,
+                asset_tags.c.favorite_since,
+                asset_tags.c.favorite_price,
+            ).where(asset_tags.c.asset_symbol == asset.symbol)
+        ).all()
+        fallback_since = default_since or asset.favorite_since or (
+            asset.created_at.date() if asset.created_at else date.today()
+        )
+        for tag_name, favorite_since, favorite_price in memberships:
+            if favorite_since is not None and favorite_price is not None:
+                continue
+            snapshot_date = favorite_since or fallback_since
+            snapshot_price = favorite_price
+            if snapshot_price is None:
+                snapshot_price = self._price_on_or_before(
+                    asset.symbol,
+                    snapshot_date,
+                )
+            self.session.execute(
+                update(asset_tags)
+                .where(
+                    asset_tags.c.asset_symbol == asset.symbol,
+                    asset_tags.c.tag_name == tag_name,
+                )
+                .values(
+                    favorite_since=snapshot_date,
+                    favorite_price=snapshot_price,
+                )
+            )
+
+    def _reset_tag_snapshots(self, asset: Asset) -> None:
+        snapshot_date = date.today()
+        snapshot_price = self._price_on_or_before(asset.symbol, snapshot_date)
+        self.session.execute(
+            update(asset_tags)
+            .where(asset_tags.c.asset_symbol == asset.symbol)
+            .values(
+                favorite_since=snapshot_date,
+                favorite_price=snapshot_price,
+            )
+        )
 
     def ensure_default_asset(self) -> Asset:
         symbol = "000001.SH"
@@ -113,6 +225,149 @@ class MarketService:
                 )
         self.session.commit()
 
+    def backfill_market_metadata(self) -> None:
+        tags = list(
+            self.session.scalars(
+                select(Tag).order_by(Tag.position, Tag.name)
+            )
+        )
+        pinned_seen = False
+        for position, tag in enumerate(tags):
+            tag.position = position
+            if tag.is_pinned:
+                if pinned_seen:
+                    tag.is_pinned = False
+                pinned_seen = True
+        assets = list(self.session.scalars(select(Asset)))
+        for asset in assets:
+            fallback_since = (
+                asset.created_at.date() if asset.created_at else date.today()
+            )
+            if asset.is_favorite:
+                if asset.favorite_since is None:
+                    asset.favorite_since = fallback_since
+                self._capture_favorite_price(asset)
+            self.session.flush()
+            self._capture_tag_prices(
+                asset,
+                asset.favorite_since or fallback_since,
+            )
+        self.session.commit()
+
+    def list_tags(self) -> list[TagGroupRead]:
+        tags = list(
+            self.session.scalars(
+                select(Tag).order_by(Tag.is_pinned.desc(), Tag.position, Tag.name)
+            )
+        )
+        return [
+            TagGroupRead(
+                name=tag.name,
+                position=tag.position,
+                is_pinned=tag.is_pinned,
+                asset_count=sum(asset.is_favorite for asset in tag.assets),
+            )
+            for tag in tags
+            if any(asset.is_favorite for asset in tag.assets)
+        ]
+
+    def reorder_tags(self, names: list[str]) -> list[TagGroupRead]:
+        tags = list(self.session.scalars(select(Tag)))
+        by_name = {tag.name: tag for tag in tags}
+        unknown = [name for name in names if name not in by_name]
+        if unknown:
+            raise TagNotFound(f"Tag {unknown[0]} was not found")
+        ordered = [by_name[name] for name in names]
+        ordered.extend(
+            sorted(
+                (tag for tag in tags if tag.name not in names),
+                key=lambda item: (item.position, item.name),
+            )
+        )
+        for position, tag in enumerate(ordered):
+            tag.position = position
+        self.session.commit()
+        return self.list_tags()
+
+    def set_tag_pinned(self, name: str, is_pinned: bool) -> list[TagGroupRead]:
+        tag = self.session.get(Tag, name)
+        if tag is None:
+            raise TagNotFound(f"Tag {name} was not found")
+        if is_pinned:
+            for item in self.session.scalars(select(Tag).where(Tag.is_pinned.is_(True))):
+                item.is_pinned = False
+        tag.is_pinned = is_pinned
+        self.session.commit()
+        return self.list_tags()
+
+    def assets_for_tag(
+        self,
+        name: str,
+    ) -> list[tuple[Asset, date | None, Decimal | None]]:
+        tag = self.session.get(Tag, name)
+        if tag is None:
+            raise TagNotFound(f"Tag {name} was not found")
+        rows = self.session.execute(
+            select(
+                Asset,
+                asset_tags.c.favorite_since,
+                asset_tags.c.favorite_price,
+            )
+            .join(asset_tags, asset_tags.c.asset_symbol == Asset.symbol)
+            .where(
+                asset_tags.c.tag_name == name,
+                Asset.is_favorite.is_(True),
+            )
+            .order_by(Asset.name, Asset.symbol)
+        ).all()
+        return [
+            (asset, favorite_since, favorite_price)
+            for asset, favorite_since, favorite_price in rows
+        ]
+
+    def summarize_assets(
+        self,
+        assets: list[tuple[Asset, date | None, Decimal | None]],
+    ) -> list[AssetMarketSummary]:
+        summaries = []
+        for asset, favorite_since, favorite_price in assets:
+            latest = self.session.scalar(
+                select(MarketBar)
+                .where(MarketBar.asset_symbol == asset.symbol)
+                .order_by(MarketBar.trade_date.desc())
+                .limit(1)
+            )
+            favorite_return = None
+            change = latest.change if latest else None
+            change_percent = latest.change_percent if latest else None
+            if latest is not None and latest.previous_close:
+                if change is None:
+                    change = latest.close - latest.previous_close
+                if change_percent is None:
+                    change_percent = change / latest.previous_close * 100
+            if latest is not None and favorite_price:
+                favorite_return = (
+                    (latest.close - favorite_price)
+                    / favorite_price
+                    * 100
+                )
+            summaries.append(
+                AssetMarketSummary(
+                    symbol=asset.symbol,
+                    name=asset.name,
+                    category=asset.category,
+                    currency=asset.currency,
+                    favorite_since=favorite_since,
+                    favorite_price=favorite_price,
+                    favorite_return_percent=favorite_return,
+                    latest_price=latest.close if latest else None,
+                    latest_price_date=latest.trade_date if latest else None,
+                    change=change,
+                    change_percent=change_percent,
+                )
+            )
+        return summaries
+
     def _set_tags(self, asset: Asset, names: list[str] | tuple[str, ...]) -> None:
         tags: list[Tag] = []
         seen: set[str] = set()
@@ -125,7 +380,10 @@ class MarketService:
                 raise ValueError("tag must not exceed 64 characters")
             tag = self.session.get(Tag, name)
             if tag is None:
-                tag = Tag(name=name)
+                next_position = self.session.scalar(
+                    select(func.coalesce(func.max(Tag.position), -1) + 1)
+                )
+                tag = Tag(name=name, position=next_position)
                 self.session.add(tag)
             tags.append(tag)
             seen.add(key)
@@ -271,6 +529,9 @@ class MarketService:
             row.volume = item.volume
             row.amount = item.amount
             row.source = item.source or self.provider.name
+        self.session.flush()
+        self._capture_favorite_price(asset)
+        self._capture_tag_prices(asset)
         self.session.commit()
         return MarketSyncResult(
             symbol=asset.symbol,
