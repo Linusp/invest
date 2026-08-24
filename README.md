@@ -1,35 +1,46 @@
 # Invest Service
 
-从 Oreo 拆出的独立投资数据服务，提供 FastAPI REST API 与 MCP
-Streamable HTTP/stdio 两种接口。服务负责：
+独立的投资数据服务，提供 FastAPI REST API 与 MCP Streamable HTTP/stdio
+两种接口。服务负责：
 
-- 带原始计价币种的个股、ETF、指数搜索、注册、日线同步和历史行情查询。
+- 带原始计价币种的个股、ETF、指数搜索、注册、标签分组、日线同步和历史行情查询。
 - 从欧洲央行同步每日汇率，将多币种资产统一折算到系统报告币种。
-- 按固定周期自动更新所有已注册标的，启动后立即执行第一次更新。
+- 通过 Celery Beat 定时更新已注册标的和 ECB 汇率，由 Celery Worker 执行任务。
 - 策略创建、列表、详情与元数据修改。
 - 以现金、持仓成本和历史盈亏导入策略期初状态，无需补齐全部历史交易。
 - 买入、卖出、入金、出金流水的追加和查询。
 - 从交易流水实时推导持仓、移动平均成本、现金、已实现及浮动盈亏。
 - 按交易日收盘状态划分持仓周期，并统计已清仓周期的胜率和盈亏比。
-- 通过同一领域服务暴露 12 个 MCP 工具。
+- 通过同一领域服务暴露 11 个 MCP 工具。
 
 ## 本地运行
 
-要求 Python 3.11+。
+要求 Python 3.12。
 
 ```bash
 cd invest
 python -m venv .venv
 .venv/bin/pip install -e '.[test]'
 cp .env.example .env
-# 编辑 .env，填写 INVEST_TUSHARE_TOKEN
+# 编辑 .env，填写 INVEST_TUSHARE_TOKEN；另外启动一个本地 Redis
+# 终端 1
+.venv/bin/celery -A invest_service.celery_app:celery_app worker --loglevel=INFO
+# 终端 2
+.venv/bin/celery -A invest_service.celery_app:celery_app beat --loglevel=INFO
+# 终端 3
 .venv/bin/uvicorn invest_service.main:app --reload
 ```
+
+Worker 和 Beat 需要 Redis；本地 Redis 地址通过
+`INVEST_CELERY_BROKER_URL` 配置。若只调试查询 API，可以暂不启动二者。
+首次使用时通过行情页搜索标的；服务会注册搜索结果、自动投递后台行情任务，
+页面会短暂轮询等待数据，无需手动调用同步接口。未配置 Tushare token 时页面会
+直接显示配置提示，不再等待慢速兜底发现。
 
 默认 API 地址是 `http://127.0.0.1:8000`，OpenAPI 文档位于
 `/docs`，MCP Streamable HTTP 端点是 `/mcp/`。Web 页面位于：
 
-- `/market`：标的搜索、行情更新、K 线和历史明细。
+- `/market`：按标签折叠分组的标的列表、行情更新、K 线和历史明细；默认打开上证指数。
 - `/strategy`：策略、交易、持仓和盈亏管理。
 
 也可以使用 stdio：
@@ -51,15 +62,44 @@ MCP 客户端的 HTTP 配置示例：
 }
 ```
 
-## Docker
+## Docker Compose 部署
+
+复制配置并至少填写行情源凭据：
 
 ```bash
-cd invest
-docker compose up --build -d
+cp .env.example .env
+# 编辑 .env
 ```
 
-默认映射到宿主机 `8001` 端口。PostgreSQL 数据保存在
-`invest-db` volume 中。
+默认方案使用 SQLite，API、Worker、Beat 和 Redis 会一起启动：
+
+```bash
+docker compose up --build -d
+docker compose ps
+curl http://127.0.0.1:8001/health
+```
+
+生产环境推荐 PostgreSQL：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up --build -d
+```
+
+也可以使用 MySQL 8.4：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mysql.yml up --build -d
+```
+
+默认映射宿主机 `8001` 端口。三种方案分别使用命名卷持久化 SQLite、
+PostgreSQL 或 MySQL 数据；Redis 和 Beat 调度状态也会持久化。升级时可执行相同
+命令重新构建，停止服务使用对应命令加 `down`。不要加 `-v`，除非确认需要删除
+全部数据库和队列数据。用于生产时务必修改默认数据库密码。PostgreSQL/MySQL
+密码会拼入 URL，建议只使用 URL 安全字符，或在 `.env` 中设置完整的
+`COMPOSE_DATABASE_URL`。它与供本地进程使用的 `INVEST_DATABASE_URL` 分开，
+避免把宿主机 SQLite 路径错误地注入容器。
+
+Web 页面所需的 ECharts 和 Lucide 已随镜像提供并启用 gzip，不依赖公共 CDN。
 
 ## 主要 REST API
 
@@ -67,10 +107,9 @@ docker compose up --build -d
 | --- | --- | --- |
 | `GET` | `/api/v1/assets/search?q=...` | 搜索并自动注册标的 |
 | `POST` | `/api/v1/assets` | 手动注册标的 |
-| `POST` | `/api/v1/assets/{symbol}/sync` | 更新单个标的行情 |
-| `POST` | `/api/v1/assets/sync` | 更新全部标的行情 |
+| `PUT` | `/api/v1/assets/{symbol}/tags` | 覆盖标的的多标签列表 |
+| `PUT` | `/api/v1/assets/{symbol}/favorite` | 加入或移出自选（保留资产与行情数据） |
 | `GET` | `/api/v1/assets/{symbol}/history` | 查询历史行情 |
-| `POST` | `/api/v1/exchange-rates/sync` | 同步 ECB 每日或完整历史汇率 |
 | `GET` | `/api/v1/exchange-rates/{currency}` | 查询指定日期前最近汇率 |
 | `POST` | `/api/v1/strategies` | 创建策略 |
 | `GET` | `/api/v1/strategies/{id}` | 查询策略详情 |
@@ -103,19 +142,35 @@ docker compose up --build -d
 浮动盈亏计算总收益，但净投入和收益率保持未知。期初状态之后的交易日期必须
 晚于状态日期。
 
-## 自动更新
+## 数据库与定时任务
 
 以下配置均使用 `INVEST_` 前缀：
 
-- `DATABASE_URL`：SQLite 或 PostgreSQL SQLAlchemy URL。
-- `AUTO_UPDATE_ENABLED`：是否启用更新任务，默认 `true`。
+应用配置统一由 `pydantic-settings` 的 `Settings` 类加载，优先级为：创建
+`Settings` 时显式传值、进程环境变量、当前工作目录下的 `.env`、代码默认值。
+环境变量名大小写不敏感，空环境变量会被忽略；JSON 列表可直接用于 CORS、MCP
+hosts/origins 等字段。配置会在进程内缓存，修改环境变量或 `.env` 后需重启
+API、Worker 和 Beat。
+
+- `DATABASE_URL`：SQLAlchemy URL，支持 SQLite、PostgreSQL 和 MySQL。
+  常用形式分别为 `sqlite:///./invest.db`、
+  `postgresql+psycopg://user:pass@host/db`、
+  `mysql+pymysql://user:pass@host/db?charset=utf8mb4`。未指定驱动的
+  `postgresql://`/`postgres://`/`mysql://` 会自动选用已安装驱动。
+- `CELERY_BROKER_URL`：Celery broker URL，默认 `redis://localhost:6379/0`。
+- `AUTO_UPDATE_ENABLED`：是否让 Beat 注册定时任务，默认 `true`。
 - `AUTO_UPDATE_INTERVAL_MINUTES`：更新周期，默认 60 分钟。
 - `AUTO_UPDATE_LOOKBACK_DAYS`：每次回溯天数，默认 10 天。
 - `REPORTING_CURRENCY`：策略汇总的统一报告币种，默认 `CNY`。
 - `EXCHANGE_RATE_UPDATE_HOUR`：每日汇率更新时间（Asia/Shanghai），默认 23 点。
-- `MARKET_PROVIDER`：行情源，默认 `tushare`；可显式设为 `eastmoney`。
-- `TUSHARE_TOKEN`：Tushare Pro token，使用默认行情源时必填。
-- `EASTMONEY_TOKEN`：仅在 `MARKET_PROVIDER=eastmoney` 时使用。
+- `MARKET_PROVIDER`：配置的付费/显式行情源，默认 `tushare`；设为
+  `eastmoney` 时使用原有的东方财富主源模式。
+- `MARKET_PROVIDER_ORDER`：`free_first`（默认）时先请求免费行情源，均失败或
+  返回空数据后才请求 Tushare；`configured_first` 保留 Tushare 主源、AkShare
+  兜底的旧顺序。
+- `TUSHARE_TOKEN`：Tushare Pro token；在 `free_first` 模式下作为最后的付费
+  兜底，未配置时免费行情源仍可使用。
+- `EASTMONEY_TOKEN`：东方财富接口 token，免费优先模式也会使用。
 - `INDEX_FALLBACK_PROVIDER`：指数日线兜底，默认 `akshare`，设为 `none`
   可关闭。AkShare 内部先请求腾讯，失败或无数据时再请求新浪。
 - `ETF_FALLBACK_PROVIDER`：ETF 搜索与日线兜底，默认 `akshare`，设为
@@ -124,33 +179,40 @@ docker compose up --build -d
 - `MCP_ALLOWED_HOSTS`：MCP 允许的 Host 列表；经反向代理发布时必须加入域名。
 - `MCP_ALLOWED_ORIGINS`：浏览器 MCP 客户端允许的 Origin 列表。
 
-Tushare 分别通过 `daily`、`fund_daily`、`index_daily` 获取个股、ETF
-和指数日线，返回的成交额会从千元换算为元。指数的 Tushare 请求失败或
-返回空数据时，会自动使用 AkShare 的腾讯/新浪数据源；ETF 的 Tushare
-目录不可用时，会使用 AkShare 的新浪/东方财富列表，日线不可用时使用
-东方财富/新浪接口。单个标的第一次同步默认回填
-十年，后续更新仅回溯配置的天数。最近三天的
-行情会覆盖更新；更早的数据仅在显式传入 `overwrite=true` 时更新。
+`COMPOSE_DATABASE_URL`、`POSTGRES_*`、`MYSQL_*`、`INVEST_PORT` 和
+`INVEST_WORKER_CONCURRENCY` 是 Compose 自身使用的部署变量，不会进入应用
+`Settings`；Compose 最终会把对应的 `INVEST_*` 应用变量注入容器。
 
-汇率使用欧洲中央银行公布的欧元参考汇率。首次同步会回填 CNY、HKD、USD、EUR
+API 进程不再执行调度，也不提供手动同步 REST/MCP 接口。Beat 默认每 60 分钟
+发布一次全市场更新任务，每天 Asia/Shanghai 时区的配置小时 30 分发布汇率更新
+任务；Worker 负责执行。部署中应保持一个 Beat 实例，Worker 可以按负载扩容。
+
+默认免费优先顺序为：个股使用 AkShare 腾讯、AkShare 新浪、东方财富后再用
+Tushare；指数使用 AkShare 腾讯、AkShare 新浪后再用 Tushare；ETF 使用
+东方财富、AkShare 新浪后再用 Tushare。搜索同样先使用免费源，仅在免费源
+均无结果时使用 Tushare。
+Tushare 分别通过 `daily`、`fund_daily`、`index_daily` 获取个股、ETF
+和指数日线，返回的成交额会从千元换算为元。单个标的第一次同步默认回填
+十年，后续更新仅回溯配置的天数。最近三天的行情会覆盖更新，更早的数据保持
+不变。
+
+汇率使用欧洲中央银行公布的欧元参考汇率。首次更新会回填 CNY、HKD、USD、EUR
 及所有已使用币种的完整历史，之后每天 23:30 更新；周末和休市日估值使用目标
 日期之前最近一个可用汇率。ECB 说明该参考汇率仅供信息用途，不适合作为实际
 成交汇率。
 
-## 迁移 Oreo 行情
+## 测试
 
-迁移脚本从旧 Oreo 数据库复制标的和历史行情，不修改源数据库：
+推荐使用根目录 Makefile 管理开发环境：
 
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/migrate_oreo.py \
-  --source 'postgresql+psycopg://oreo:password@host/oreo' \
-  --target 'postgresql+psycopg://invest:password@host/invest'
+make deps                 # 创建/同步 .venv，并安装当前项目
+make lint                 # Ruff + codespell
+make test                 # pytest + 覆盖率报告
+make lock-requirements    # 从 pyproject.toml 重新生成 requirements.txt
 ```
 
-旧页面的策略数据存放在浏览器 `localStorage`，不在 Oreo 数据库中，无法由
-数据库迁移脚本自动读取。迁移后应通过策略和交易 API 导入这些流水。
-
-## 测试
+也可以直接执行底层命令：
 
 ```bash
 PYTHONPATH=src .venv/bin/pytest

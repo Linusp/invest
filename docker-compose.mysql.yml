@@ -1,0 +1,42 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-invest}
+      MYSQL_USER: ${MYSQL_USER:-invest}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-invest}
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u$${MYSQL_USER} -p$${MYSQL_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    volumes:
+      - invest-mysql:/var/lib/mysql
+
+  app:
+    environment:
+      INVEST_DATABASE_URL: ${COMPOSE_DATABASE_URL:-mysql+pymysql://${MYSQL_USER:-invest}:${MYSQL_PASSWORD:-invest}@mysql:3306/${MYSQL_DATABASE:-invest}?charset=utf8mb4}
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  worker:
+    environment:
+      INVEST_DATABASE_URL: ${COMPOSE_DATABASE_URL:-mysql+pymysql://${MYSQL_USER:-invest}:${MYSQL_PASSWORD:-invest}@mysql:3306/${MYSQL_DATABASE:-invest}?charset=utf8mb4}
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  beat:
+    environment:
+      INVEST_DATABASE_URL: ${COMPOSE_DATABASE_URL:-mysql+pymysql://${MYSQL_USER:-invest}:${MYSQL_PASSWORD:-invest}@mysql:3306/${MYSQL_DATABASE:-invest}?charset=utf8mb4}
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  invest-mysql:

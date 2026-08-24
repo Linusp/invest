@@ -1,32 +1,79 @@
+x-invest-environment: &invest-environment
+  INVEST_DATABASE_URL: ${COMPOSE_DATABASE_URL:-sqlite:////data/invest.db}
+  INVEST_CELERY_BROKER_URL: redis://redis:6379/0
+  INVEST_AUTO_UPDATE_ENABLED: ${INVEST_AUTO_UPDATE_ENABLED:-true}
+  INVEST_AUTO_UPDATE_INTERVAL_MINUTES: ${INVEST_AUTO_UPDATE_INTERVAL_MINUTES:-60}
+  INVEST_AUTO_UPDATE_LOOKBACK_DAYS: ${INVEST_AUTO_UPDATE_LOOKBACK_DAYS:-10}
+  INVEST_EXCHANGE_RATE_UPDATE_HOUR: ${INVEST_EXCHANGE_RATE_UPDATE_HOUR:-23}
+  INVEST_MARKET_PROVIDER: ${INVEST_MARKET_PROVIDER:-tushare}
+  INVEST_MARKET_PROVIDER_ORDER: ${INVEST_MARKET_PROVIDER_ORDER:-free_first}
+  INVEST_TUSHARE_TOKEN: ${INVEST_TUSHARE_TOKEN:-}
+  INVEST_EASTMONEY_TOKEN: ${INVEST_EASTMONEY_TOKEN:-D43BF722C8E33BDC906FB84D85E326E8}
+  INVEST_INDEX_FALLBACK_PROVIDER: ${INVEST_INDEX_FALLBACK_PROVIDER:-akshare}
+  INVEST_ETF_FALLBACK_PROVIDER: ${INVEST_ETF_FALLBACK_PROVIDER:-akshare}
+  INVEST_REPORTING_CURRENCY: ${INVEST_REPORTING_CURRENCY:-CNY}
+  INVEST_CORS_ORIGINS: ${INVEST_CORS_ORIGINS:-[]}
+  INVEST_MCP_ALLOWED_HOSTS: ${INVEST_MCP_ALLOWED_HOSTS:-["127.0.0.1","127.0.0.1:*","localhost","localhost:*","app","app:*"]}
+  INVEST_MCP_ALLOWED_ORIGINS: ${INVEST_MCP_ALLOWED_ORIGINS:-[]}
+
+x-invest-service: &invest-service
+  build: .
+  image: invest-service:${INVEST_IMAGE_TAG:-latest}
+  restart: unless-stopped
+  environment: *invest-environment
+  volumes:
+    - invest-data:/data
+
 services:
-  db:
-    image: postgres:16-alpine
+  redis:
+    image: redis:7-alpine
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-invest}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-invest}
-      POSTGRES_DB: ${POSTGRES_DB:-invest}
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     volumes:
-      - invest-db:/var/lib/postgresql/data
+      - invest-redis:/data
 
   app:
-    build: .
-    restart: unless-stopped
+    <<: *invest-service
+    command: ["uvicorn", "invest_service.main:app", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
-      - db
-    environment:
-      INVEST_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-invest}:${POSTGRES_PASSWORD:-invest}@db:5432/${POSTGRES_DB:-invest}
-      INVEST_AUTO_UPDATE_ENABLED: ${INVEST_AUTO_UPDATE_ENABLED:-true}
-      INVEST_AUTO_UPDATE_INTERVAL_MINUTES: ${INVEST_AUTO_UPDATE_INTERVAL_MINUTES:-60}
-      INVEST_MARKET_PROVIDER: ${INVEST_MARKET_PROVIDER:-tushare}
-      INVEST_TUSHARE_TOKEN: ${INVEST_TUSHARE_TOKEN:?set INVEST_TUSHARE_TOKEN}
-      INVEST_EASTMONEY_TOKEN: ${INVEST_EASTMONEY_TOKEN:-D43BF722C8E33BDC906FB84D85E326E8}
-      INVEST_INDEX_FALLBACK_PROVIDER: ${INVEST_INDEX_FALLBACK_PROVIDER:-akshare}
-      INVEST_ETF_FALLBACK_PROVIDER: ${INVEST_ETF_FALLBACK_PROVIDER:-akshare}
-      INVEST_REPORTING_CURRENCY: ${INVEST_REPORTING_CURRENCY:-CNY}
-      INVEST_EXCHANGE_RATE_UPDATE_HOUR: ${INVEST_EXCHANGE_RATE_UPDATE_HOUR:-23}
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     ports:
       - "${INVEST_PORT:-8001}:8000"
 
+  worker:
+    <<: *invest-service
+    command: ["celery", "-A", "invest_service.celery_app:celery_app", "worker", "--loglevel=INFO", "--concurrency=${INVEST_WORKER_CONCURRENCY:-1}"]
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    <<: *invest-service
+    command: ["celery", "-A", "invest_service.celery_app:celery_app", "beat", "--loglevel=INFO", "--schedule=/var/run/celery/celerybeat-schedule"]
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - invest-data:/data
+      - invest-beat:/var/run/celery
+
 volumes:
-  invest-db:
+  invest-data:
+  invest-redis:
+  invest-beat:

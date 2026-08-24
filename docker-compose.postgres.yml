@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-invest}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-invest}
+      POSTGRES_DB: ${POSTGRES_DB:-invest}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - invest-postgres:/var/lib/postgresql/data
+
+  app:
+    environment:
+      INVEST_DATABASE_URL: ${COMPOSE_DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-invest}:${POSTGRES_PASSWORD:-invest}@postgres:5432/${POSTGRES_DB:-invest}}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    environment:
+      INVEST_DATABASE_URL: ${COMPOSE_DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-invest}:${POSTGRES_PASSWORD:-invest}@postgres:5432/${POSTGRES_DB:-invest}}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  beat:
+    environment:
+      INVEST_DATABASE_URL: ${COMPOSE_DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-invest}:${POSTGRES_PASSWORD:-invest}@postgres:5432/${POSTGRES_DB:-invest}}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  invest-postgres:
