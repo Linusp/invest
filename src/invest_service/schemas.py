@@ -125,6 +125,7 @@ class MarketBarRead(APIModel):
 
 class MarketSyncResult(APIModel):
     symbol: str
+    category: AssetCategory
     start_date: date
     end_date: date
     created: int
@@ -172,6 +173,7 @@ class TradeCreate(APIModel):
     type: TradeType
     trade_date: date
     asset_symbol: str | None = None
+    asset_category: AssetCategory | None = None
     price: Decimal = Field(gt=0)
     quantity: Decimal = Field(default=Decimal("0"), ge=0)
     fee: Decimal = Field(default=Decimal("0"), ge=0)
@@ -184,7 +186,11 @@ class TradeCreate(APIModel):
         is_security_trade = self.type in (TradeType.BUY, TradeType.SELL)
         if is_security_trade and (not self.asset_symbol or self.quantity <= 0):
             raise ValueError("buy/sell requires asset_symbol and quantity > 0")
-        if not is_security_trade and (self.asset_symbol is not None or self.quantity != 0):
+        if not is_security_trade and (
+            self.asset_symbol is not None
+            or self.asset_category is not None
+            or self.quantity != 0
+        ):
             raise ValueError("deposit/withdraw must not include an asset or quantity")
         return self
 
@@ -193,6 +199,7 @@ class TradeRead(APIModel):
     id: str
     strategy_id: str
     asset_symbol: str | None
+    asset_category: AssetCategory | None
     position_id: str | None
     type: TradeType
     trade_date: date
@@ -223,6 +230,7 @@ class PositionRead(APIModel):
 
 class OpeningPositionCreate(APIModel):
     asset_symbol: str = Field(min_length=1, max_length=32)
+    asset_category: AssetCategory | None = None
     quantity: Decimal = Field(gt=0)
     average_cost: Decimal = Field(gt=0)
 
@@ -241,9 +249,12 @@ class OpeningSnapshotUpsert(APIModel):
 
     @model_validator(mode="after")
     def validate_unique_positions(self):
-        symbols = [item.asset_symbol.strip().upper() for item in self.positions]
-        if len(symbols) != len(set(symbols)):
-            raise ValueError("opening snapshot positions must have unique asset symbols")
+        identities = [
+            (item.asset_category, item.asset_symbol.strip().upper())
+            for item in self.positions
+        ]
+        if len(identities) != len(set(identities)):
+            raise ValueError("opening snapshot positions must have unique asset identities")
         currencies = [item.currency.strip().upper() for item in self.balances]
         if len(currencies) != len(set(currencies)):
             raise ValueError("opening snapshot balances must have unique currencies")

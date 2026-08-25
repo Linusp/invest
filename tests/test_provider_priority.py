@@ -31,10 +31,19 @@ BAR = ProviderBar(
 
 
 class RecordingProvider:
-    def __init__(self, name, *, search_result=None, history_result=None, error=None):
+    def __init__(
+        self,
+        name,
+        *,
+        search_result=None,
+        history_result=None,
+        catalog_result=None,
+        error=None,
+    ):
         self.name = name
         self.search_result = search_result
         self.history_result = history_result
+        self.catalog_result = catalog_result
         self.error = error
         self.calls = []
 
@@ -49,6 +58,12 @@ class RecordingProvider:
         if self.error:
             raise ProviderError(self.error)
         return self.history_result or []
+
+    def catalog(self):
+        self.calls.append(("catalog",))
+        if self.error:
+            raise ProviderError(self.error)
+        return self.catalog_result or []
 
 
 def _chain(free, paid):
@@ -97,3 +112,22 @@ def test_search_stops_at_first_free_result_and_falls_back_on_empty():
     free.search_result = []
     assert provider.search("浦发") == [ASSET]
     assert paid.calls == [("search", "浦发", None)]
+
+
+def test_catalog_aggregates_all_sources_and_keeps_other_names_as_aliases():
+    free = RecordingProvider("free", catalog_result=[ASSET])
+    paid_name = ProviderAsset(
+        symbol=ASSET.symbol,
+        code=ASSET.code,
+        name="上海浦东发展银行",
+        category=ASSET.category,
+        provider_id=ASSET.provider_id,
+    )
+    paid = RecordingProvider("tushare", catalog_result=[paid_name])
+
+    catalog = _chain(free, paid).catalog()
+
+    assert catalog[0].name == "浦发银行"
+    assert catalog[0].aliases == ("上海浦东发展银行",)
+    assert free.calls == [("catalog",)]
+    assert paid.calls == [("catalog",)]

@@ -16,6 +16,7 @@ from invest_service.database import Base, get_db
 from invest_service.main import create_app
 from invest_service.models import AssetCategory
 from invest_service.providers import MarketDataProvider, ProviderAsset, ProviderBar
+from invest_service.services import MarketService
 
 
 class FakeMarketProvider(MarketDataProvider):
@@ -47,6 +48,9 @@ class FakeMarketProvider(MarketDataProvider):
             if normalized in f"{asset.symbol} {asset.code} {asset.name}".lower()
             and (category is None or asset.category == category)
         ][:limit]
+
+    def catalog(self) -> list[ProviderAsset]:
+        return list(self.assets)
 
     def history(self, asset: ProviderAsset, start_date: date, end_date: date) -> list[ProviderBar]:
         values = [
@@ -102,12 +106,14 @@ def client(session_factory, provider):
         provider,
     )
     app.state.session_factory = session_factory
-    app.state.enqueue_market_update = lambda _: None
+    app.state.enqueue_market_update = lambda *_: None
 
     def override_db():
         with session_factory() as session:
             yield session
 
     app.dependency_overrides[get_db] = override_db
+    with session_factory() as session:
+        MarketService(session, provider).sync_search_index()
     with TestClient(app) as test_client:
         yield test_client

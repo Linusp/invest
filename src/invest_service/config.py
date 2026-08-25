@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     auto_update_enabled: bool = True
     auto_update_interval_minutes: int = Field(default=60, ge=1)
     auto_update_lookback_days: int = Field(default=10, ge=1, le=3650)
+    search_index_update_hour: int = Field(default=3, ge=0, le=23)
     exchange_rate_update_hour: int = Field(default=23, ge=0, le=23)
     celery_broker_url: str = "redis://localhost:6379/0"
     cors_origins: list[str] = []

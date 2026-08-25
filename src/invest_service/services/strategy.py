@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..config import get_settings
 from ..models import (
     Asset,
+    AssetCategory,
     MarketBar,
     OpeningBalance,
     OpeningPosition,
@@ -19,6 +20,7 @@ from ..models import (
     Strategy,
     Trade,
     TradeType,
+    asset_identity,
 )
 from ..position_cycles import assign_position_ids, ordered_trades
 from ..schemas import (
@@ -81,6 +83,29 @@ class StrategyService:
         self.exchange_rates = ExchangeRateService(
             session, reporting_currency=self.reporting_currency
         )
+
+    def _resolve_asset(
+        self,
+        symbol: str,
+        category: AssetCategory | None,
+    ) -> Asset:
+        symbol = symbol.strip().upper()
+        if category is not None:
+            asset = self.session.get(Asset, asset_identity(category, symbol))
+        else:
+            matches = list(
+                self.session.scalars(
+                    select(Asset).where(Asset.symbol == symbol).limit(2)
+                )
+            )
+            if len(matches) > 1:
+                raise InvalidTrade(
+                    f"Asset {symbol} is ambiguous; asset_category is required"
+                )
+            asset = matches[0] if matches else None
+        if asset is None:
+            raise InvalidTrade(f"Asset {symbol} must be registered before trading")
+        return asset
 
     def create(self, data: StrategyCreate) -> Strategy:
         strategy = Strategy(
@@ -156,15 +181,13 @@ class StrategyService:
             if existing:
                 return existing
         symbol = data.asset_symbol.upper() if data.asset_symbol else None
-        asset = self.session.get(Asset, symbol) if symbol else None
-        if symbol and asset is None:
-            raise InvalidTrade(f"Asset {symbol} must be registered before trading")
+        asset = self._resolve_asset(symbol, data.asset_category) if symbol else None
         currency = asset.currency if asset is not None else (
             data.currency or self.reporting_currency
         ).upper()
         trade = Trade(
             strategy=strategy,
-            asset_symbol=symbol,
+            asset=asset,
             type=data.type,
             trade_date=data.trade_date,
             price=data.price,
@@ -201,15 +224,13 @@ class StrategyService:
                 f"found trade on {conflicting_trade.trade_date}"
             )
 
-        assets: dict[str, Asset] = {}
+        assets: dict[tuple[AssetCategory | None, str], Asset] = {}
         for item in data.positions:
             symbol = item.asset_symbol.strip().upper()
-            asset = self.session.get(Asset, symbol)
-            if asset is None:
-                raise InvalidTrade(
-                    f"Asset {symbol} must be registered before importing a snapshot"
-                )
-            assets[symbol] = asset
+            assets[(item.asset_category, symbol)] = self._resolve_asset(
+                symbol,
+                item.asset_category,
+            )
 
         snapshot = strategy.opening_snapshot
         if snapshot is None:
@@ -241,8 +262,7 @@ class StrategyService:
             symbol = item.asset_symbol.strip().upper()
             snapshot.positions.append(
                 OpeningPosition(
-                    asset=assets[symbol],
-                    asset_symbol=symbol,
+                    asset=assets[(item.asset_category, symbol)],
                     quantity=_six(item.quantity),
                     cost_basis=_six(item.quantity * item.average_cost),
                 )
@@ -273,16 +293,16 @@ class StrategyService:
         snapshot = strategy.opening_snapshot
 
         if snapshot is not None:
-            opening_symbols = {item.asset_symbol for item in snapshot.positions}
+            opening_keys = {item.asset_key for item in snapshot.positions}
             for trade in self._ordered_trades(strategy):
                 if (
-                    trade.asset_symbol in opening_symbols
+                    trade.asset_key in opening_keys
                     and trade.position_id is not None
-                    and trade.asset_symbol not in opening_cycle_ids
+                    and trade.asset_key not in opening_cycle_ids
                 ):
-                    opening_cycle_ids[trade.asset_symbol] = trade.position_id
+                    opening_cycle_ids[trade.asset_key] = trade.position_id
             for item in snapshot.positions:
-                position_id = opening_cycle_ids.get(item.asset_symbol)
+                position_id = opening_cycle_ids.get(item.asset_key)
                 if position_id is None:
                     continue
                 cycles[position_id] = _PositionCycle(
@@ -366,7 +386,7 @@ class StrategyService:
                     self.reporting_currency,
                     snapshot.snapshot_date,
                 )
-                positions[item.asset_symbol] = _Position(
+                positions[item.asset_key] = _Position(
                     asset=item.asset,
                     quantity=item.quantity,
                     cost_basis=item.cost_basis,
@@ -399,7 +419,7 @@ class StrategyService:
                 continue
 
             assert trade.asset is not None
-            position = positions.setdefault(trade.asset_symbol, _Position(asset=trade.asset))
+            position = positions.setdefault(trade.asset_key, _Position(asset=trade.asset))
             gross = trade.price * trade.quantity
             if trade.type == TradeType.BUY:
                 gross_report = self.exchange_rates.convert(
@@ -453,7 +473,7 @@ class StrategyService:
         for position in positions.values():
             if position.quantity <= EPSILON:
                 continue
-            price_stmt = select(MarketBar).where(MarketBar.asset_symbol == position.asset.symbol)
+            price_stmt = select(MarketBar).where(MarketBar.asset_key == position.asset.key)
             if as_of:
                 price_stmt = price_stmt.where(MarketBar.trade_date <= as_of)
             latest = self.session.scalar(price_stmt.order_by(MarketBar.trade_date.desc()).limit(1))

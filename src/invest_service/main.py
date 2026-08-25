@@ -14,6 +14,7 @@ from .api import assets_router, exchange_rates_router, strategies_router, tags_r
 from .config import Settings, get_settings
 from .database import Base, make_engine, make_session_factory
 from .mcp_server import build_mcp
+from .models import AssetCategory
 from .providers import (
     EcbExchangeRateProvider,
     MarketDataProvider,
@@ -64,6 +65,7 @@ def create_app(
                 market_service.backfill_default_tags()
             market_service.ensure_default_asset()
             market_service.backfill_market_metadata()
+            market_service.seed_search_index()
         async with mcp.session_manager.run():
             try:
                 yield
@@ -82,34 +84,34 @@ def create_app(
         and not settings.tushare_token
     )
     configured_provider_blocked = (
-        tushare_token_missing
-        and settings.market_provider_order == "configured_first"
+        tushare_token_missing and settings.market_provider_order == "configured_first"
     )
     app.state.market_provider_discovery_enabled = not configured_provider_blocked
     if not tushare_token_missing:
         app.state.market_provider_warning = None
     elif settings.market_provider_order == "free_first":
         app.state.market_provider_warning = (
-            "未配置 Tushare Token，免费行情源仍可使用，但 Tushare 付费兜底不可用。"
+            "未配置 Tushare Token，本地搜索仍可用；目录和行情更新将只使用免费源。"
         )
     else:
         app.state.market_provider_warning = (
-            "未配置 Tushare Token，外部标的发现和行情更新已暂停。请设置 "
-            "INVEST_TUSHARE_TOKEN，或将 INVEST_MARKET_PROVIDER_ORDER 改为 "
-            "free_first，然后重启 app、worker 服务。"
+            "未配置 Tushare Token，本地搜索仍可用；Tushare 目录补全和部分行情更新"
+            "已暂停。请设置 INVEST_TUSHARE_TOKEN，或将 "
+            "INVEST_MARKET_PROVIDER_ORDER 改为 free_first，然后重启 app、worker 服务。"
         )
     enqueued_at: dict[str, float] = {}
     enqueue_lock = Lock()
 
-    def enqueue_market_update(symbol: str) -> None:
+    def enqueue_market_update(category: AssetCategory, symbol: str) -> None:
         from .celery_app import update_asset_market_data
 
+        identity = f"{category.value}:{symbol}"
         now = monotonic()
         with enqueue_lock:
-            if now - enqueued_at.get(symbol, 0) < 300:
+            if now - enqueued_at.get(identity, 0) < 300:
                 return
-            update_asset_market_data.delay(symbol)
-            enqueued_at[symbol] = now
+            update_asset_market_data.delay(symbol, category.value)
+            enqueued_at[identity] = now
 
     app.state.enqueue_market_update = enqueue_market_update
     app.add_middleware(GZipMiddleware, minimum_size=1000)

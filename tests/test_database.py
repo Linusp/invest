@@ -5,7 +5,7 @@ from sqlalchemy import inspect
 from invest_service.config import Settings
 from invest_service.database import make_engine, make_session_factory
 from invest_service.main import create_app
-from invest_service.models import Asset, AssetCategory
+from invest_service.models import Asset, AssetCategory, asset_identity
 from invest_service.providers import ProviderAsset
 
 
@@ -39,7 +39,10 @@ def test_create_app_uses_injected_database_url(tmp_path, provider):
     engine = make_engine(url)
     assert {"assets", "tags", "asset_tags"} <= set(inspect(engine).get_table_names())
     with make_session_factory(engine)() as session:
-        default_asset = session.get(Asset, "000001.SH")
+        default_asset = session.get(
+            Asset,
+            asset_identity(AssetCategory.INDEX, "000001.SH"),
+        )
         assert default_asset is not None
         assert default_asset.name == "上证指数"
         assert default_asset.provider_id == "000001.SH"
@@ -53,12 +56,14 @@ def test_rejects_unsupported_database_backend():
         make_engine("oracle://user:pass@localhost/invest")
 
 
-def test_missing_tushare_token_keeps_free_discovery_enabled(tmp_path, monkeypatch):
+def test_missing_tushare_token_keeps_local_search_available(tmp_path, monkeypatch):
     class FreeProvider:
         name = "free"
 
         def search(self, query, limit=15, category=None):
-            assert query == "600000"
+            raise AssertionError("interactive search must not call a remote provider")
+
+        def catalog(self):
             return [
                 ProviderAsset(
                     symbol="600000.SH",
@@ -85,9 +90,13 @@ def test_missing_tushare_token_keeps_free_discovery_enabled(tmp_path, monkeypatc
     app.state.enqueue_market_update = lambda _: None
 
     with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            from invest_service.services import MarketService
+
+            MarketService(session, app.state.market_provider).sync_search_index()
         page = client.get("/market")
         search = client.get("/api/v1/assets/search", params={"q": "600000"})
 
     assert "未配置 Tushare Token" in page.text
     assert search.json()[0]["symbol"] == "600000.SH"
-    assert search.headers["X-Invest-Warning"] == "tushare-fallback-missing"
+    assert "X-Invest-Warning" not in search.headers

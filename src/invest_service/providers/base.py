@@ -47,6 +47,7 @@ class ProviderAsset:
     provider_id: str
     currency: str = "CNY"
     default_tags: tuple[str, ...] = ()
+    aliases: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,10 @@ class MarketDataProvider(ABC):
         limit: int = 15,
         category: AssetCategory | None = None,
     ) -> list[ProviderAsset]: ...
+
+    def catalog(self) -> list[ProviderAsset]:
+        """Return a full catalog when the provider exposes a stable list endpoint."""
+        return []
 
     @abstractmethod
     def history(

@@ -9,8 +9,10 @@ ALLOWED_FUNCTIONS = {
     "fund_etf_category_sina",
     "fund_etf_hist_sina",
     "fund_etf_spot_em",
+    "stock_info_a_code_name",
     "stock_zh_index_daily",
     "stock_zh_index_daily_tx",
+    "stock_zh_index_spot_sina",
     "stock_zh_a_daily",
     "stock_zh_a_hist_tx",
 }

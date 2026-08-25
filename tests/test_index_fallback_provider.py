@@ -213,6 +213,15 @@ class FakeEtfAkshare:
             ]
         )
 
+
+class FakeCatalogAkshare(FakeEtfAkshare):
+    def stock_info_a_code_name(self):
+        return FakeFrame([{"code": "600000", "name": "浦发银行"}])
+
+    def stock_zh_index_spot_sina(self):
+        return FakeFrame([{"代码": "sh000300", "名称": "沪深300"}])
+
+
 class FakeEtfHistoryProvider:
     def __init__(self):
         self.calls = []
@@ -262,6 +271,17 @@ def test_akshare_etf_search_and_history():
     assert bars[0].change_percent == Decimal("1.22")
     assert bars[0].amount == Decimal("830000")
     assert bars[0].source == "eastmoney"
+
+
+def test_akshare_catalog_combines_stock_etf_and_index_lists():
+    assets = AkshareFallbackProvider(FakeCatalogAkshare()).catalog()
+
+    assert {(asset.symbol, asset.category) for asset in assets} == {
+        ("600000.SH", AssetCategory.STOCK),
+        ("510300.SH", AssetCategory.ETF),
+        ("159915.SZ", AssetCategory.ETF),
+        ("000300.SH", AssetCategory.INDEX),
+    }
 
 
 def test_akshare_etf_history_falls_back_from_eastmoney_to_sina():

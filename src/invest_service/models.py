@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import hashlib
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -19,6 +20,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    event,
     false,
     true,
 )
@@ -35,6 +37,16 @@ class AssetCategory(str, enum.Enum):
     STOCK = "stock"
     ETF = "etf"
     INDEX = "index"
+
+
+def asset_identity(category: AssetCategory | str, symbol: str) -> str:
+    category_value = (
+        category.value
+        if isinstance(category, AssetCategory)
+        else str(category).lower()
+    )
+    canonical = f"{category_value}:{symbol.strip().upper()}"
+    return hashlib.sha256(canonical.encode()).hexdigest()[:32]
 
 
 class TradeType(str, enum.Enum):
@@ -89,7 +101,8 @@ class Tag(Base):
 class Asset(Base):
     __tablename__ = "assets"
 
-    symbol: Mapped[str] = mapped_column(String(32), primary_key=True)
+    key: Mapped[str] = mapped_column("symbol", String(32), primary_key=True)
+    symbol: Mapped[str] = mapped_column("market_symbol", String(32), index=True)
     code: Mapped[str] = mapped_column(String(32), index=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
     category: Mapped[AssetCategory] = mapped_column(
@@ -122,6 +135,30 @@ class Asset(Base):
     )
 
 
+class AssetSearchIndex(Base):
+    """Lightweight, provider-fed document used by all interactive asset search."""
+
+    __tablename__ = "asset_search_index"
+
+    key: Mapped[str] = mapped_column("symbol", String(32), primary_key=True)
+    symbol: Mapped[str] = mapped_column("market_symbol", String(32), index=True)
+    code: Mapped[str] = mapped_column(String(32), index=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    category: Mapped[AssetCategory] = mapped_column(
+        Enum(AssetCategory, native_enum=False), index=True
+    )
+    currency: Mapped[str] = mapped_column(String(3), default="CNY")
+    provider_id: Mapped[str | None] = mapped_column(String(64))
+    aliases: Mapped[str] = mapped_column(Text, default="[]")
+    default_tags: Mapped[str] = mapped_column(Text, default="[]")
+    pinyin_full: Mapped[str] = mapped_column(Text, default="")
+    pinyin_initials: Mapped[str] = mapped_column(Text, default="")
+    search_text: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class MarketBar(Base):
     __tablename__ = "market_bars"
     __table_args__ = (
@@ -130,7 +167,8 @@ class MarketBar(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    asset_symbol: Mapped[str] = mapped_column(
+    asset_key: Mapped[str] = mapped_column(
+        "asset_symbol",
         ForeignKey("assets.symbol", ondelete="CASCADE"), index=True
     )
     trade_date: Mapped[date] = mapped_column(Date, index=True)
@@ -197,15 +235,12 @@ class OpeningSnapshot(Base):
         ForeignKey("strategies.id", ondelete="CASCADE"), primary_key=True
     )
     snapshot_date: Mapped[date] = mapped_column(Date)
-    legacy_cash: Mapped[Decimal] = mapped_column(
-        "cash", Numeric(24, 6), default=Decimal("0")
-    )
+    legacy_cash: Mapped[Decimal] = mapped_column("cash", Numeric(24, 6), default=Decimal("0"))
     legacy_historical_net_contribution: Mapped[Decimal | None] = mapped_column(
         "historical_net_contribution", Numeric(24, 6)
     )
     legacy_historical_realized_profit: Mapped[Decimal] = mapped_column(
-        "historical_realized_profit",
-        Numeric(24, 6), default=Decimal("0")
+        "historical_realized_profit", Numeric(24, 6), default=Decimal("0")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -259,7 +294,8 @@ class OpeningPosition(Base):
         ForeignKey("strategy_opening_snapshots.strategy_id", ondelete="CASCADE"),
         index=True,
     )
-    asset_symbol: Mapped[str] = mapped_column(
+    asset_key: Mapped[str] = mapped_column(
+        "asset_symbol",
         ForeignKey("assets.symbol", ondelete="RESTRICT"),
         index=True,
     )
@@ -273,6 +309,14 @@ class OpeningPosition(Base):
     def average_cost(self) -> Decimal:
         return self.cost_basis / self.quantity
 
+    @property
+    def asset_symbol(self) -> str:
+        return self.asset.symbol
+
+    @property
+    def asset_category(self) -> AssetCategory:
+        return self.asset.category
+
 
 class Trade(Base):
     __tablename__ = "trades"
@@ -285,7 +329,8 @@ class Trade(Base):
     strategy_id: Mapped[str] = mapped_column(
         ForeignKey("strategies.id", ondelete="CASCADE"), index=True
     )
-    asset_symbol: Mapped[str | None] = mapped_column(
+    asset_key: Mapped[str | None] = mapped_column(
+        "asset_symbol",
         ForeignKey("assets.symbol", ondelete="RESTRICT"), index=True
     )
     position_id: Mapped[str | None] = mapped_column(String(36), index=True)
@@ -301,3 +346,17 @@ class Trade(Base):
 
     strategy: Mapped[Strategy] = relationship(back_populates="trades")
     asset: Mapped[Asset | None] = relationship()
+
+    @property
+    def asset_symbol(self) -> str | None:
+        return self.asset.symbol if self.asset is not None else None
+
+    @property
+    def asset_category(self) -> AssetCategory | None:
+        return self.asset.category if self.asset is not None else None
+
+
+@event.listens_for(Asset, "before_insert")
+def set_asset_identity(_, __, asset: Asset) -> None:
+    if not asset.key:
+        asset.key = asset_identity(asset.category, asset.symbol)

@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from .config import Settings, get_settings
 from .database import Base, SessionLocal, engine
+from .models import AssetCategory
 from .providers import (
     EcbExchangeRateProvider,
     MarketDataProvider,
@@ -25,6 +26,8 @@ ASSET_UPDATE_SOFT_TIME_LIMIT = 3 * 60
 ASSET_UPDATE_TIME_LIMIT = 4 * 60
 EXCHANGE_RATE_SOFT_TIME_LIMIT = 2 * 60
 EXCHANGE_RATE_TIME_LIMIT = 3 * 60
+SEARCH_INDEX_SOFT_TIME_LIMIT = 25 * 60
+SEARCH_INDEX_TIME_LIMIT = 30 * 60
 
 
 def build_beat_schedule(settings: Settings) -> dict[str, dict[str, Any]]:
@@ -44,6 +47,14 @@ def build_beat_schedule(settings: Settings) -> dict[str, dict[str, Any]]:
                 minute=30,
             ),
             "options": {"expires": 6 * 60 * 60},
+        },
+        "update-search-index": {
+            "task": "invest.update_search_index",
+            "schedule": crontab(
+                hour=settings.search_index_update_hour,
+                minute=10,
+            ),
+            "options": {"expires": 12 * 60 * 60},
         },
     }
 
@@ -95,10 +106,13 @@ def run_asset_update(
     provider: MarketDataProvider,
     symbol: str,
     lookback_days: int,
+    category: AssetCategory | None = None,
 ) -> dict[str, Any]:
     with session_factory() as session:
         result = MarketService(session, provider).sync_asset(
-            symbol, lookback_days=lookback_days
+            symbol,
+            lookback_days=lookback_days,
+            category=category,
         )
     logger.info(
         "Market update for %s finished: %d created, %d updated",
@@ -115,15 +129,30 @@ def run_exchange_rate_update(
     reporting_currency: str,
 ) -> dict[str, Any]:
     with session_factory() as session:
-        result = ExchangeRateService(
-            session, provider, reporting_currency
-        ).sync()
+        result = ExchangeRateService(session, provider, reporting_currency).sync()
     logger.info(
         "Exchange-rate update finished: %d created, %d updated",
         result.created,
         result.updated,
     )
     return result.model_dump(mode="json")
+
+
+def run_search_index_update(
+    session_factory: sessionmaker,
+    provider: MarketDataProvider,
+) -> dict[str, int]:
+    with session_factory() as session:
+        result = MarketService(session, provider).sync_search_index()
+    logger.info(
+        "Search-index update finished: %d discovered, %d indexed",
+        result.discovered,
+        result.indexed,
+    )
+    return {
+        "discovered": result.discovered,
+        "indexed": result.indexed,
+    }
 
 
 @celery_app.task(
@@ -149,13 +178,17 @@ def update_market_data() -> dict[str, Any]:
     soft_time_limit=ASSET_UPDATE_SOFT_TIME_LIMIT,
     time_limit=ASSET_UPDATE_TIME_LIMIT,
 )
-def update_asset_market_data(symbol: str) -> dict[str, Any]:
+def update_asset_market_data(
+    symbol: str,
+    category: str | None = None,
+) -> dict[str, Any]:
     current_settings = get_settings()
     return run_asset_update(
         SessionLocal,
         make_market_provider(current_settings),
         symbol,
         current_settings.auto_update_lookback_days,
+        AssetCategory(category) if category else None,
     )
 
 
@@ -174,6 +207,23 @@ def update_exchange_rates() -> dict[str, Any]:
         SessionLocal,
         EcbExchangeRateProvider(),
         current_settings.reporting_currency,
+    )
+
+
+@celery_app.task(
+    name="invest.update_search_index",
+    autoretry_for=(ProviderError,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=3,
+    soft_time_limit=SEARCH_INDEX_SOFT_TIME_LIMIT,
+    time_limit=SEARCH_INDEX_TIME_LIMIT,
+)
+def update_search_index() -> dict[str, int]:
+    current_settings = get_settings()
+    return run_search_index_update(
+        SessionLocal,
+        make_market_provider(current_settings),
     )
 
 

@@ -34,9 +34,7 @@ def list_assets(
     offset: int = Query(default=0, ge=0),
     include_hidden: bool = False,
 ):
-    assets = MarketService(db, provider).list_assets(
-        category, limit, offset, include_hidden
-    )
+    assets = MarketService(db, provider).list_assets(category, limit, offset, include_hidden)
     _queue_missing_history(request, response, db, assets)
     return assets
 
@@ -58,47 +56,27 @@ def register_asset(
 def search_assets(
     db: DB,
     provider: Provider,
-    request: Request,
-    response: Response,
     q: str = Query(min_length=1),
     category: AssetCategory | None = None,
     limit: int = Query(default=15, ge=1, le=100),
-    discover: bool = True,
 ):
-    assets = MarketService(db, provider).search_assets(
-        q,
-        category,
-        limit,
-        discover and request.app.state.market_provider_discovery_enabled,
-    )
-    _queue_missing_history(request, response, db, assets)
-    return assets
+    return MarketService(db, provider).search_assets(q, category, limit)
 
 
-@router.get("/{symbol}", response_model=AssetRead)
-def get_asset(
-    symbol: str,
-    db: DB,
-    provider: Provider,
-    request: Request,
-    response: Response,
-):
-    asset = MarketService(db, provider).get_asset(symbol)
-    _queue_missing_history(request, response, db, [asset])
-    return asset
-
-
-@router.put("/{symbol}/tags", response_model=AssetRead)
+@router.put("/{category}/{symbol}/tags", response_model=AssetRead)
+@router.put("/{symbol}/tags", response_model=AssetRead, deprecated=True)
 def update_asset_tags(
     symbol: str,
     data: AssetTagsUpdate,
     db: DB,
     provider: Provider,
+    category: AssetCategory | None = None,
 ):
-    return MarketService(db, provider).update_tags(symbol, data.tags)
+    return MarketService(db, provider).update_tags(symbol, data.tags, category)
 
 
-@router.put("/{symbol}/favorite", response_model=AssetRead)
+@router.put("/{category}/{symbol}/favorite", response_model=AssetRead)
+@router.put("/{symbol}/favorite", response_model=AssetRead, deprecated=True)
 def update_asset_favorite(
     symbol: str,
     data: AssetFavoriteUpdate,
@@ -106,14 +84,20 @@ def update_asset_favorite(
     provider: Provider,
     request: Request,
     response: Response,
+    category: AssetCategory | None = None,
 ):
-    asset = MarketService(db, provider).set_favorite(symbol, data.is_favorite)
+    asset = MarketService(db, provider).set_favorite(
+        symbol,
+        data.is_favorite,
+        category,
+    )
     if asset.is_favorite:
         _queue_missing_history(request, response, db, [asset])
     return asset
 
 
-@router.get("/{symbol}/history", response_model=list[MarketBarRead])
+@router.get("/{category}/{symbol}/history", response_model=list[MarketBarRead])
+@router.get("/{symbol}/history", response_model=list[MarketBarRead], deprecated=True)
 def get_history(
     symbol: str,
     db: DB,
@@ -121,8 +105,32 @@ def get_history(
     start_date: date | None = None,
     end_date: date | None = None,
     limit: int = Query(default=1000, ge=1, le=10_000),
+    category: AssetCategory | None = None,
 ):
-    return MarketService(db, provider).history(symbol, start_date, end_date, limit)
+    return MarketService(db, provider).history(
+        symbol,
+        start_date,
+        end_date,
+        limit,
+        category,
+    )
+
+
+# Keep the generic two-segment route after legacy routes such as
+# /{symbol}/history. Starlette matches path templates in declaration order.
+@router.get("/{category}/{symbol}", response_model=AssetRead)
+@router.get("/{symbol}", response_model=AssetRead, deprecated=True)
+def get_asset(
+    symbol: str,
+    db: DB,
+    provider: Provider,
+    request: Request,
+    response: Response,
+    category: AssetCategory | None = None,
+):
+    asset = MarketService(db, provider).get_asset(symbol, category)
+    _queue_missing_history(request, response, db, [asset])
+    return asset
 
 
 def _queue_missing_history(
@@ -140,16 +148,16 @@ def _queue_missing_history(
         )
     if not request.app.state.market_provider_discovery_enabled:
         return
-    symbols = [asset.symbol for asset in assets]
-    if not symbols:
+    keys = [asset.key for asset in assets]
+    if not keys:
         return
     populated = set(
         db.scalars(
-            select(MarketBar.asset_symbol)
-            .where(MarketBar.asset_symbol.in_(symbols))
+            select(MarketBar.asset_key)
+            .where(MarketBar.asset_key.in_(keys))
             .distinct()
         )
     )
-    for symbol in symbols:
-        if symbol not in populated:
-            request.app.state.enqueue_market_update(symbol)
+    for asset in assets:
+        if asset.key not in populated:
+            request.app.state.enqueue_market_update(asset.category, asset.symbol)

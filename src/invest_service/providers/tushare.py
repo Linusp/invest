@@ -1,3 +1,5 @@
+import logging
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from time import monotonic
@@ -13,6 +15,8 @@ from .base import (
     ProviderError,
     infer_default_tags,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _decimal(value: Any) -> Decimal | None:
@@ -32,9 +36,7 @@ class TushareProvider(MarketDataProvider):
         AssetCategory.ETF: "fund_daily",
         AssetCategory.INDEX: "index_daily",
     }
-    HISTORY_FIELDS = (
-        "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
-    )
+    HISTORY_FIELDS = "ts_code,trade_date,open,high,low,close,pre_close,change,pct_chg,vol,amount"
 
     def __init__(
         self,
@@ -58,9 +60,7 @@ class TushareProvider(MarketDataProvider):
         fields: str,
     ) -> list[dict[str, Any]]:
         if not self.token:
-            raise ProviderError(
-                "Tushare token is not configured; set INVEST_TUSHARE_TOKEN"
-            )
+            raise ProviderError("Tushare token is not configured; set INVEST_TUSHARE_TOKEN")
         try:
             response = self.client.post(
                 self.API_URL,
@@ -86,9 +86,7 @@ class TushareProvider(MarketDataProvider):
         if not isinstance(response_fields, list) or not isinstance(items, list):
             raise ProviderError(f"Tushare {api_name} returned malformed data")
         return [
-            dict(zip(response_fields, row, strict=False))
-            for row in items
-            if isinstance(row, list)
+            dict(zip(response_fields, row, strict=False)) for row in items if isinstance(row, list)
         ]
 
     def search(
@@ -135,6 +133,27 @@ class TushareProvider(MarketDataProvider):
 
         return sorted(candidates, key=rank)[:limit]
 
+    def catalog(self) -> list[ProviderAsset]:
+        assets: list[ProviderAsset] = []
+        errors: list[ProviderError] = []
+        for category in (
+            AssetCategory.STOCK,
+            AssetCategory.ETF,
+            AssetCategory.INDEX,
+        ):
+            try:
+                assets.extend(self._catalog(category))
+            except ProviderError as exc:
+                errors.append(exc)
+                logger.warning(
+                    "Tushare %s catalog failed; keeping other categories: %s",
+                    category.value,
+                    exc,
+                )
+        if not assets and errors:
+            raise errors[0]
+        return assets
+
     def _catalog(self, category: AssetCategory) -> list[ProviderAsset]:
         cached = self._catalog_cache.get(category)
         now = monotonic()
@@ -154,9 +173,50 @@ class TushareProvider(MarketDataProvider):
         rows = self._query(
             "stock_basic",
             {"exchange": "", "list_status": "L"},
-            "ts_code,symbol,name,industry,market",
+            "ts_code,symbol,name,industry,market,fullname",
         )
-        return self._assets_from_rows(rows, AssetCategory.STOCK, "name")
+        assets = self._assets_from_rows(
+            rows,
+            AssetCategory.STOCK,
+            "name",
+            alias_fields=("fullname",),
+        )
+        try:
+            former_names = self._query(
+                "namechange",
+                {},
+                "ts_code,name,start_date,end_date",
+            )
+        except ProviderError as exc:
+            logger.warning(
+                "Tushare former-name catalog failed; keeping stock basics: %s",
+                exc,
+            )
+            return assets
+        aliases_by_symbol: dict[str, list[str]] = {}
+        for row in former_names:
+            symbol = str(row.get("ts_code") or "").strip().upper()
+            name = str(row.get("name") or "").strip()
+            if symbol and name:
+                aliases_by_symbol.setdefault(symbol, []).append(name)
+        return [
+            replace(
+                asset,
+                aliases=tuple(
+                    dict.fromkeys(
+                        (
+                            *asset.aliases,
+                            *(
+                                name
+                                for name in aliases_by_symbol.get(asset.symbol, [])
+                                if name.casefold() != asset.name.casefold()
+                            ),
+                        )
+                    )
+                ),
+            )
+            for asset in assets
+        ]
 
     def _etf_catalog(self) -> list[ProviderAsset]:
         name_fields = ("extname", "csname")
@@ -180,14 +240,17 @@ class TushareProvider(MarketDataProvider):
         for row in rows:
             ts_code = str(row.get("ts_code") or "").strip().upper()
             name = next(
-                (
-                    str(row.get(field) or "").strip()
-                    for field in name_fields
-                    if row.get(field)
-                ),
+                (str(row.get(field) or "").strip() for field in name_fields if row.get(field)),
                 "",
             )
             if ts_code and name:
+                aliases = tuple(
+                    value
+                    for value in dict.fromkeys(
+                        str(row.get(field) or "").strip() for field in name_fields
+                    )
+                    if value and value.casefold() != name.casefold()
+                )
                 assets.append(
                     ProviderAsset(
                         symbol=ts_code,
@@ -196,6 +259,7 @@ class TushareProvider(MarketDataProvider):
                         category=AssetCategory.ETF,
                         provider_id=ts_code,
                         default_tags=infer_default_tags(ts_code, AssetCategory.ETF),
+                        aliases=aliases,
                     )
                 )
         return assets
@@ -218,9 +282,14 @@ class TushareProvider(MarketDataProvider):
             rows = self._query(
                 "index_basic",
                 {"market": market},
-                "ts_code,name,market",
+                "ts_code,name,market,fullname",
             )
-            for asset in self._assets_from_rows(rows, AssetCategory.INDEX, "name"):
+            for asset in self._assets_from_rows(
+                rows,
+                AssetCategory.INDEX,
+                "name",
+                alias_fields=("fullname",),
+            ):
                 by_symbol[asset.symbol] = asset
         return list(by_symbol.values())
 
@@ -229,6 +298,7 @@ class TushareProvider(MarketDataProvider):
         rows: list[dict[str, Any]],
         category: AssetCategory,
         name_field: str,
+        alias_fields: tuple[str, ...] = (),
     ) -> list[ProviderAsset]:
         assets: list[ProviderAsset] = []
         for row in rows:
@@ -247,6 +317,13 @@ class TushareProvider(MarketDataProvider):
                             ts_code,
                             category,
                             str(row.get("industry") or "").strip() or None,
+                        ),
+                        aliases=tuple(
+                            value
+                            for value in dict.fromkeys(
+                                str(row.get(field) or "").strip() for field in alias_fields
+                            )
+                            if value and value.casefold() != name.casefold()
                         ),
                     )
                 )

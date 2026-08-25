@@ -35,14 +35,14 @@ def assign_position_ids(
     security_trades: dict[str, list[Trade]] = defaultdict(list)
     for trade in trades:
         if trade.type in (TradeType.BUY, TradeType.SELL):
-            assert trade.asset_symbol is not None
-            security_trades[trade.asset_symbol].append(trade)
+            assert trade.asset_key is not None
+            security_trades[trade.asset_key].append(trade)
         elif trade.position_id is not None:
             trade.position_id = None
             changed = True
 
     opening_quantities = {
-        item.asset_symbol: item.quantity
+        item.asset_key: item.quantity
         for item in opening_snapshot.positions
     } if opening_snapshot is not None else {}
 

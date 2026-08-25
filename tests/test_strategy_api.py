@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from invest_service.models import ExchangeRate, MarketBar
+from invest_service.models import AssetCategory, ExchangeRate, MarketBar, asset_identity
 from invest_service.services import MarketService
 
 
@@ -460,7 +460,7 @@ def test_multi_currency_strategy_uses_asset_currency_and_daily_fx(
     with session_factory() as session:
         session.add(
             MarketBar(
-                asset_symbol="00700.HK",
+                asset_key=asset_identity(AssetCategory.STOCK, "00700.HK"),
                 trade_date=date(2026, 7, 10),
                 close=Decimal("400"),
                 source="test",

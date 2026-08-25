@@ -38,6 +38,11 @@ def test_searches_tushare_catalogs_and_caches_them():
                 body["fields"],
                 [["600000.SH", "600000", "浦发银行", "银行", "主板"]],
             )
+        if api_name == "namechange":
+            return _response(
+                body["fields"],
+                [["600000.SH", "浦东发展银行", "19991110", "20101231"]],
+            )
         if api_name == "etf_basic":
             return _response(
                 body["fields"],
@@ -61,6 +66,7 @@ def test_searches_tushare_catalogs_and_caches_them():
     ]
     assert calls == [
         "stock_basic",
+        "namechange",
         "etf_basic",
         "index_basic",
         "index_basic",
@@ -70,6 +76,7 @@ def test_searches_tushare_catalogs_and_caches_them():
     stock = provider.search("浦发", category=AssetCategory.STOCK)[0]
     assert stock.symbol == "600000.SH"
     assert stock.default_tags == ("银行",)
+    assert stock.aliases == ("浦东发展银行",)
     assert calls.count("stock_basic") == 1
 
 

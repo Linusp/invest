@@ -58,12 +58,10 @@ def build_mcp(
 
     @mcp.tool()
     def search_assets(query: str, category: str | None = None, limit: int = 15) -> list[dict]:
-        """Search registered and provider assets; provider matches are registered automatically."""
+        """Fuzzy-search the periodically refreshed local asset index."""
         parsed_category = AssetCategory(category) if category else None
         with session_factory() as session:
-            assets = MarketService(session, provider).search_assets(
-                query, parsed_category, limit, discover=True
-            )
+            assets = MarketService(session, provider).search_assets(query, parsed_category, limit)
             return [_json_asset(asset) for asset in assets]
 
     @mcp.tool()
@@ -90,6 +88,7 @@ def build_mcp(
     @mcp.tool()
     def get_market_history(
         symbol: str,
+        category: str | None = None,
         start_date: str | None = None,
         end_date: str | None = None,
         limit: int = 1000,
@@ -101,6 +100,7 @@ def build_mcp(
                 date.fromisoformat(start_date) if start_date else None,
                 date.fromisoformat(end_date) if end_date else None,
                 limit,
+                AssetCategory(category) if category else None,
             )
             from .schemas import MarketBarRead
 
@@ -187,6 +187,7 @@ def build_mcp(
         trade_date: str,
         price: float,
         asset_symbol: str | None = None,
+        asset_category: str | None = None,
         quantity: float = 0,
         fee: float = 0,
         note: str | None = None,
@@ -204,6 +205,9 @@ def build_mcp(
                     trade_date=date.fromisoformat(trade_date),
                     price=Decimal(str(price)),
                     asset_symbol=asset_symbol,
+                    asset_category=(
+                        AssetCategory(asset_category) if asset_category else None
+                    ),
                     quantity=Decimal(str(quantity)),
                     fee=Decimal(str(fee)),
                     currency=currency,

@@ -1,4 +1,5 @@
 import json
+import logging
 import subprocess
 import sys
 from datetime import date, datetime
@@ -9,6 +10,8 @@ from typing import Any
 from ..models import AssetCategory
 from .base import MarketDataProvider, ProviderAsset, ProviderBar, ProviderError
 from .eastmoney import EastMoneyProvider
+
+logger = logging.getLogger(__name__)
 
 
 def _decimal(value: Any) -> Decimal | None:
@@ -60,7 +63,9 @@ class AkshareFallbackProvider(MarketDataProvider):
     ):
         self._api = api
         self.catalog_ttl_seconds = catalog_ttl_seconds
+        self._stock_catalog_cache: tuple[float, list[ProviderAsset]] | None = None
         self._etf_catalog_cache: tuple[float, list[ProviderAsset]] | None = None
+        self._index_catalog_cache: tuple[float, list[ProviderAsset]] | None = None
         self._etf_history_provider = etf_history_provider
         self.call_timeout_seconds = call_timeout_seconds
 
@@ -95,8 +100,7 @@ class AkshareFallbackProvider(MarketDataProvider):
             )
         except subprocess.TimeoutExpired as exc:
             raise ProviderError(
-                f"AkShare {function_name} timed out after "
-                f"{self.call_timeout_seconds} seconds"
+                f"AkShare {function_name} timed out after {self.call_timeout_seconds} seconds"
             ) from exc
         if completed.returncode != 0:
             detail = completed.stderr.strip().splitlines()
@@ -105,12 +109,8 @@ class AkshareFallbackProvider(MarketDataProvider):
         try:
             records = json.loads(completed.stdout)
         except json.JSONDecodeError as exc:
-            raise ProviderError(
-                f"AkShare {function_name} returned malformed data"
-            ) from exc
-        if not isinstance(records, list) or not all(
-            isinstance(record, dict) for record in records
-        ):
+            raise ProviderError(f"AkShare {function_name} returned malformed data") from exc
+        if not isinstance(records, list) or not all(isinstance(record, dict) for record in records):
             raise ProviderError(f"AkShare {function_name} returned malformed data")
         return _RecordsFrame(records)
 
@@ -120,15 +120,36 @@ class AkshareFallbackProvider(MarketDataProvider):
         limit: int = 15,
         category: AssetCategory | None = None,
     ) -> list[ProviderAsset]:
-        if category not in (None, AssetCategory.ETF):
-            return []
+        catalogs = {
+            AssetCategory.STOCK: self._stock_catalog,
+            AssetCategory.ETF: self._etf_catalog,
+            AssetCategory.INDEX: self._index_catalog,
+        }
+        categories = (category,) if category is not None else tuple(catalogs)
+        candidates: list[ProviderAsset] = []
+        errors: list[Exception] = []
+        for selected in categories:
+            try:
+                candidates.extend(catalogs[selected]())
+            except Exception as exc:
+                errors.append(exc)
+                logger.warning(
+                    "AkShare %s catalog failed; keeping other categories: %s",
+                    selected.value,
+                    exc,
+                )
+        if not candidates and errors:
+            raise ProviderError(f"AkShare catalog failed: {errors[0]}") from errors[0]
         needle = query.strip().lower()
         matches = [
             asset
-            for asset in self._etf_catalog()
+            for asset in candidates
             if not needle or needle in f"{asset.symbol} {asset.code} {asset.name}".lower()
         ]
         return matches[:limit]
+
+    def catalog(self) -> list[ProviderAsset]:
+        return self.search("", limit=100_000)
 
     def history(
         self,
@@ -169,9 +190,7 @@ class AkshareFallbackProvider(MarketDataProvider):
                 errors.append(f"{source_name} returned no rows in the requested range")
             except Exception as exc:
                 errors.append(f"{source_name} failed: {exc}")
-        raise ProviderError(
-            f"AkShare index history failed for {asset.symbol}: {'; '.join(errors)}"
-        )
+        raise ProviderError(f"AkShare index history failed for {asset.symbol}: {'; '.join(errors)}")
 
     def _stock_history(
         self,
@@ -209,16 +228,11 @@ class AkshareFallbackProvider(MarketDataProvider):
                 errors.append(f"{source_name} returned no rows in the requested range")
             except Exception as exc:
                 errors.append(f"{source_name} failed: {exc}")
-        raise ProviderError(
-            f"AkShare stock history failed for {asset.symbol}: {'; '.join(errors)}"
-        )
+        raise ProviderError(f"AkShare stock history failed for {asset.symbol}: {'; '.join(errors)}")
 
     def _etf_catalog(self) -> list[ProviderAsset]:
         now = monotonic()
-        if (
-            self._etf_catalog_cache
-            and now - self._etf_catalog_cache[0] < self.catalog_ttl_seconds
-        ):
+        if self._etf_catalog_cache and now - self._etf_catalog_cache[0] < self.catalog_ttl_seconds:
             return self._etf_catalog_cache[1]
         errors: list[str] = []
         frame = None
@@ -264,6 +278,76 @@ class AkshareFallbackProvider(MarketDataProvider):
         self._etf_catalog_cache = (now, assets)
         return assets
 
+    def _stock_catalog(self) -> list[ProviderAsset]:
+        now = monotonic()
+        if (
+            self._stock_catalog_cache
+            and now - self._stock_catalog_cache[0] < self.catalog_ttl_seconds
+        ):
+            return self._stock_catalog_cache[1]
+        try:
+            frame = self._fetch("stock_info_a_code_name")
+        except Exception as exc:
+            raise ProviderError(f"AkShare stock catalog failed: {exc}") from exc
+        if frame is None or frame.empty:
+            raise ProviderError("AkShare stock catalog returned no data")
+        assets: list[ProviderAsset] = []
+        for row in frame.to_dict(orient="records"):
+            code = str(row.get("code") or row.get("代码") or "").strip()
+            name = str(row.get("name") or row.get("名称") or "").strip()
+            if not code or not name:
+                continue
+            suffix = "SH" if code.startswith("6") else "BJ" if code.startswith(("4", "8")) else "SZ"
+            symbol = f"{code}.{suffix}"
+            assets.append(
+                ProviderAsset(
+                    symbol=symbol,
+                    code=code,
+                    name=name,
+                    category=AssetCategory.STOCK,
+                    provider_id=symbol,
+                    default_tags=("A股",),
+                )
+            )
+        self._stock_catalog_cache = (now, assets)
+        return assets
+
+    def _index_catalog(self) -> list[ProviderAsset]:
+        now = monotonic()
+        if (
+            self._index_catalog_cache
+            and now - self._index_catalog_cache[0] < self.catalog_ttl_seconds
+        ):
+            return self._index_catalog_cache[1]
+        try:
+            frame = self._fetch("stock_zh_index_spot_sina")
+        except Exception as exc:
+            raise ProviderError(f"AkShare index catalog failed: {exc}") from exc
+        if frame is None or frame.empty:
+            raise ProviderError("AkShare index catalog returned no data")
+        assets: list[ProviderAsset] = []
+        for row in frame.to_dict(orient="records"):
+            raw_code = str(row.get("代码") or row.get("code") or "").strip()
+            name = str(row.get("名称") or row.get("name") or "").strip()
+            prefix = raw_code[:2].lower()
+            code = raw_code[2:] if prefix in {"sh", "sz", "bj"} else raw_code
+            if not code or not name:
+                continue
+            suffix = prefix.upper() if prefix in {"sh", "sz", "bj"} else "SH"
+            symbol = f"{code}.{suffix}"
+            assets.append(
+                ProviderAsset(
+                    symbol=symbol,
+                    code=code,
+                    name=name,
+                    category=AssetCategory.INDEX,
+                    provider_id=symbol,
+                    default_tags=("指数",),
+                )
+            )
+        self._index_catalog_cache = (now, assets)
+        return assets
+
     def _etf_history(
         self,
         asset: ProviderAsset,
@@ -301,9 +385,7 @@ class AkshareFallbackProvider(MarketDataProvider):
             errors.append("Sina returned no rows in range")
         except Exception as exc:
             errors.append(f"Sina failed: {exc}")
-        raise ProviderError(
-            f"ETF history fallback failed for {asset.symbol}: {'; '.join(errors)}"
-        )
+        raise ProviderError(f"ETF history fallback failed for {asset.symbol}: {'; '.join(errors)}")
 
     @staticmethod
     def _symbol(symbol: str) -> str:
@@ -340,9 +422,7 @@ class AkshareFallbackProvider(MarketDataProvider):
                 if change is not None and previous_close
                 else None
             )
-            row_previous_close = (
-                close - change if reported_change is not None else previous_close
-            )
+            row_previous_close = close - change if reported_change is not None else previous_close
             if start_date <= trade_date <= end_date:
                 bars.append(
                     ProviderBar(

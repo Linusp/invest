@@ -1,6 +1,7 @@
 import asyncio
 
 from invest_service.mcp_server import build_mcp
+from invest_service.services import MarketService
 
 
 def call_tool(mcp, name, arguments):
@@ -10,6 +11,8 @@ def call_tool(mcp, name, arguments):
 
 
 def test_mcp_tools_execute_market_and_strategy_workflows(session_factory, provider):
+    with session_factory() as session:
+        MarketService(session, provider).sync_search_index()
     mcp = build_mcp(session_factory, provider)
     assert {
         "search_assets",
@@ -31,11 +34,13 @@ def test_mcp_tools_execute_market_and_strategy_workflows(session_factory, provid
         {
             "strategy_id": strategy["id"],
             "snapshot_date": "2026-07-01",
-            "balances": [{
-                "currency": "CNY",
-                "cash": 1000,
-                "historical_realized_profit": 25,
-            }],
+            "balances": [
+                {
+                    "currency": "CNY",
+                    "cash": 1000,
+                    "historical_realized_profit": 25,
+                }
+            ],
             "positions": [
                 {
                     "asset_symbol": "600000.SH",
