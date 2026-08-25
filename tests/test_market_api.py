@@ -185,6 +185,28 @@ def test_manual_stock_uses_market_as_default_tag(client):
     assert response.json()["tags"] == [{"name": "港股"}]
 
 
+def test_register_and_refresh_queue_asset_market_update(client):
+    queued = []
+    client.app.state.enqueue_market_update = lambda *args: queued.append(args)
+    response = client.post(
+        "/api/v1/assets",
+        json={"symbol": "000001.SH", "name": "平安银行", "category": "stock"},
+    )
+
+    assert response.status_code == 201
+    assert queued == [(AssetCategory.STOCK, "000001.SH")]
+
+    queued.clear()
+    refresh = client.post("/api/v1/assets/stock/000001.SH/refresh")
+    assert refresh.status_code == 202
+    assert refresh.json() == {
+        "symbol": "000001.SH",
+        "category": "stock",
+        "queued": True,
+    }
+    assert queued == [(AssetCategory.STOCK, "000001.SH")]
+
+
 def test_default_tag_inference():
     assert infer_default_tags("600000.SH", AssetCategory.STOCK) == ("A股",)
     assert infer_default_tags("AAPL.US", AssetCategory.STOCK) == ("美股",)

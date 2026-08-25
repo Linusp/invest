@@ -65,6 +65,12 @@ class AssetFavoriteUpdate(APIModel):
     is_favorite: bool
 
 
+class MarketUpdateTriggerRead(APIModel):
+    symbol: str
+    category: AssetCategory
+    queued: bool = True
+
+
 class AssetRead(APIModel):
     symbol: str
     code: str

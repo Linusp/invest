@@ -15,6 +15,7 @@
 | `PUT` | `/assets/{category}/{symbol}/tags` | 批量覆盖分组（兼容接口） |
 | `PUT` | `/assets/{category}/{symbol}/favorite` | 加入或移出自选 |
 | `GET` | `/assets/{category}/{symbol}/history` | 查询历史行情 |
+| `POST` | `/assets/{category}/{symbol}/refresh` | 异步触发一次行情抓取 |
 
 ## 分组
 
@@ -37,9 +38,9 @@
 
 ## MCP 工具覆盖
 
-MCP 与上述业务接口保持同一套服务层逻辑，当前提供 27 个工具：
+MCP 与上述业务接口保持同一套服务层逻辑，当前提供 28 个工具：
 
-- 标的：`search_assets`、`list_assets`、`get_asset`、`register_asset`、`get_market_history`、`set_asset_favorite`
+- 标的：`search_assets`、`list_assets`、`get_asset`、`register_asset`、`refresh_asset_market_data`、`get_market_history`、`set_asset_favorite`
 - 自选与分组：`list_asset_tags`、`update_asset_tags`、`add_asset_tag`、`remove_asset_tag`、`list_tags`、`create_tag`、`delete_tag`、`reorder_tags`、`pin_tag`、`list_tag_assets`
 - 汇率：`get_exchange_rate`
 - 策略：`create_strategy`、`list_strategies`、`get_strategy`、`update_strategy`、`set_strategy_opening_snapshot`、`get_strategy_opening_snapshot`、`delete_strategy_opening_snapshot`、`get_strategy_trades`、`get_strategy_positions`、`add_strategy_trade`

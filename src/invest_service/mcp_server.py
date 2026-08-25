@@ -14,6 +14,7 @@ from .schemas import (
     AssetCreate,
     AssetTagCreate,
     AssetTagsUpdate,
+    MarketUpdateTriggerRead,
     OpeningBalanceUpsert,
     OpeningPositionCreate,
     OpeningSnapshotRead,
@@ -112,7 +113,27 @@ def build_mcp(
                     currency=currency,
                 )
             )
+            from .celery_app import update_asset_market_data
+
+            update_asset_market_data.delay(asset.symbol, asset.category.value)
             return _json_asset(asset)
+
+    @mcp.tool()
+    def refresh_asset_market_data(symbol: str, category: str | None = None) -> dict:
+        """Queue an immediate background refresh for one registered asset."""
+        with session_factory() as session:
+            asset = MarketService(session, provider).get_asset(
+                symbol, AssetCategory(category) if category else None
+            )
+            from .celery_app import update_asset_market_data
+
+            update_asset_market_data.delay(asset.symbol, asset.category.value)
+            return _json(
+                MarketUpdateTriggerRead(
+                    symbol=asset.symbol,
+                    category=asset.category,
+                )
+            )
 
     @mcp.tool()
     def set_asset_favorite(symbol: str, is_favorite: bool, category: str | None = None) -> dict:

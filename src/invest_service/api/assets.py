@@ -17,6 +17,7 @@ from ..schemas import (
     AssetTagMembershipRead,
     AssetTagsUpdate,
     MarketBarRead,
+    MarketUpdateTriggerRead,
 )
 from ..services import MarketService
 
@@ -157,6 +158,32 @@ def get_history(
         end_date,
         limit,
         category,
+    )
+
+
+@router.post(
+    "/{category}/{symbol}/refresh",
+    response_model=MarketUpdateTriggerRead,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@router.post(
+    "/{symbol}/refresh",
+    response_model=MarketUpdateTriggerRead,
+    status_code=status.HTTP_202_ACCEPTED,
+    deprecated=True,
+)
+def refresh_asset_market_data(
+    symbol: str,
+    db: DB,
+    provider: Provider,
+    request: Request,
+    category: AssetCategory | None = None,
+):
+    asset = MarketService(db, provider).get_asset(symbol, category)
+    request.app.state.enqueue_market_update(asset.category, asset.symbol)
+    return MarketUpdateTriggerRead(
+        symbol=asset.symbol,
+        category=asset.category,
     )
 
 

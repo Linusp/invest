@@ -19,6 +19,7 @@ def test_mcp_tools_execute_market_and_strategy_workflows(session_factory, provid
         "list_assets",
         "get_asset",
         "register_asset",
+        "refresh_asset_market_data",
         "get_market_history",
         "set_asset_favorite",
         "list_asset_tags",
