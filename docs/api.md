@@ -34,3 +34,14 @@
 标的身份由 `category + symbol` 共同确定；不同分类可以使用相同 symbol。交易及期初持仓出现重码时必须传 `asset_category`。证券交易的 `price` 是标的原币种单价，现金流水的 `price` 是现金金额；新增交易可传 `idempotency_key` 安全重试。
 
 首次加入自选会自动进入“个股”“ETF”或“指数”系统分组。每个分组分别保存加入日期和加入价格；从一个分组移除不会影响其他分组，移出自选会清除全部分组关系但保留标的和历史行情。
+
+## MCP 工具覆盖
+
+MCP 与上述业务接口保持同一套服务层逻辑，当前提供 27 个工具：
+
+- 标的：`search_assets`、`list_assets`、`get_asset`、`register_asset`、`get_market_history`、`set_asset_favorite`
+- 自选与分组：`list_asset_tags`、`update_asset_tags`、`add_asset_tag`、`remove_asset_tag`、`list_tags`、`create_tag`、`delete_tag`、`reorder_tags`、`pin_tag`、`list_tag_assets`
+- 汇率：`get_exchange_rate`
+- 策略：`create_strategy`、`list_strategies`、`get_strategy`、`update_strategy`、`set_strategy_opening_snapshot`、`get_strategy_opening_snapshot`、`delete_strategy_opening_snapshot`、`get_strategy_trades`、`get_strategy_positions`、`add_strategy_trade`
+
+MCP 不暴露 Celery 调度、后台同步等运维接口；这些任务由 Beat/Worker 按配置自动执行。

@@ -12,6 +12,8 @@ from .models import AssetCategory, TradeType
 from .providers import MarketDataProvider, make_market_provider
 from .schemas import (
     AssetCreate,
+    AssetTagCreate,
+    AssetTagsUpdate,
     OpeningBalanceUpsert,
     OpeningPositionCreate,
     OpeningSnapshotRead,
@@ -21,6 +23,7 @@ from .schemas import (
     TradeCreate,
 )
 from .services import MarketService, StrategyService
+from .services.exchange_rate import ExchangeRateService
 
 
 def _json(model: Any):
@@ -65,6 +68,32 @@ def build_mcp(
             return [_json_asset(asset) for asset in assets]
 
     @mcp.tool()
+    def list_assets(
+        category: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        include_hidden: bool = False,
+    ) -> list[dict]:
+        """List registered favorite assets, optionally including hidden assets."""
+        with session_factory() as session:
+            assets = MarketService(session, provider).list_assets(
+                AssetCategory(category) if category else None,
+                limit,
+                offset,
+                include_hidden,
+            )
+            return [_json_asset(asset) for asset in assets]
+
+    @mcp.tool()
+    def get_asset(symbol: str, category: str | None = None) -> dict:
+        """Get one asset; pass category when a symbol is ambiguous."""
+        with session_factory() as session:
+            asset = MarketService(session, provider).get_asset(
+                symbol, AssetCategory(category) if category else None
+            )
+            return _json_asset(asset)
+
+    @mcp.tool()
     def register_asset(
         symbol: str,
         name: str,
@@ -82,6 +111,57 @@ def build_mcp(
                     provider_id=provider_id,
                     currency=currency,
                 )
+            )
+            return _json_asset(asset)
+
+    @mcp.tool()
+    def set_asset_favorite(symbol: str, is_favorite: bool, category: str | None = None) -> dict:
+        """Add or remove an asset from favorites."""
+        with session_factory() as session:
+            asset = MarketService(session, provider).set_favorite(
+                symbol, is_favorite, AssetCategory(category) if category else None
+            )
+            return _json_asset(asset)
+
+    @mcp.tool()
+    def list_asset_tags(symbol: str, category: str | None = None) -> list[dict]:
+        """List an asset's tag memberships and per-tag favorite snapshots."""
+        with session_factory() as session:
+            rows = MarketService(session, provider).tag_memberships(
+                symbol, AssetCategory(category) if category else None
+            )
+            return [_json(row) for row in rows]
+
+    @mcp.tool()
+    def update_asset_tags(
+        symbol: str, tags: list[str], category: str | None = None
+    ) -> dict:
+        """Replace all tag memberships for an asset."""
+        with session_factory() as session:
+            asset = MarketService(session, provider).update_tags(
+                symbol,
+                AssetTagsUpdate(tags=tags).tags,
+                AssetCategory(category) if category else None,
+            )
+            return _json_asset(asset)
+
+    @mcp.tool()
+    def add_asset_tag(symbol: str, name: str, category: str | None = None) -> dict:
+        """Add an asset to a tag, creating the custom tag when needed."""
+        with session_factory() as session:
+            asset = MarketService(session, provider).add_tag(
+                symbol,
+                AssetTagCreate(name=name).name,
+                AssetCategory(category) if category else None,
+            )
+            return _json_asset(asset)
+
+    @mcp.tool()
+    def remove_asset_tag(symbol: str, name: str, category: str | None = None) -> dict:
+        """Remove an asset from one tag without changing other memberships."""
+        with session_factory() as session:
+            asset = MarketService(session, provider).remove_tag(
+                symbol, name, AssetCategory(category) if category else None
             )
             return _json_asset(asset)
 
@@ -105,6 +185,58 @@ def build_mcp(
             from .schemas import MarketBarRead
 
             return [_json(MarketBarRead.model_validate(row)) for row in rows]
+
+    @mcp.tool()
+    def list_tags() -> list[dict]:
+        """List visible system and custom favorite groups."""
+        with session_factory() as session:
+            return [_json(item) for item in MarketService(session, provider).list_tags()]
+
+    @mcp.tool()
+    def create_tag(name: str) -> dict:
+        """Create or reveal an empty custom favorite group."""
+        from .schemas import TagCreate
+
+        with session_factory() as session:
+            tag = MarketService(session, provider).create_tag(TagCreate(name=name))
+            return _json(tag)
+
+    @mcp.tool()
+    def delete_tag(name: str) -> None:
+        """Delete a custom group; system category groups cannot be deleted."""
+        with session_factory() as session:
+            MarketService(session, provider).delete_tag(name)
+
+    @mcp.tool()
+    def reorder_tags(names: list[str]) -> list[dict]:
+        """Set the complete display order of favorite groups."""
+        with session_factory() as session:
+            return [_json(item) for item in MarketService(session, provider).reorder_tags(names)]
+
+    @mcp.tool()
+    def pin_tag(name: str, is_pinned: bool) -> list[dict]:
+        """Pin or unpin a favorite group."""
+        with session_factory() as session:
+            groups = MarketService(session, provider).set_tag_pinned(name, is_pinned)
+            return [_json(item) for item in groups]
+
+    @mcp.tool()
+    def list_tag_assets(name: str) -> list[dict]:
+        """List summarized market data for assets in a favorite group."""
+        with session_factory() as session:
+            service = MarketService(session, provider)
+            return [_json(item) for item in service.summarize_assets(service.assets_for_tag(name))]
+
+    @mcp.tool()
+    def get_exchange_rate(currency: str, on_date: str | None = None) -> dict:
+        """Get the latest ECB exchange rate on or before a date."""
+        with session_factory() as session:
+            from .schemas import ExchangeRateRead
+
+            rate = ExchangeRateService(session).latest(
+                currency, date.fromisoformat(on_date) if on_date else None
+            )
+            return _json(ExchangeRateRead.model_validate(rate))
 
     @mcp.tool()
     def create_strategy(name: str, description: str | None = None) -> dict:
@@ -157,6 +289,19 @@ def build_mcp(
         with session_factory() as session:
             snapshot = strategies(session).set_opening_snapshot(strategy_id, payload)
             return _json(OpeningSnapshotRead.model_validate(snapshot))
+
+    @mcp.tool()
+    def get_strategy_opening_snapshot(strategy_id: str) -> dict | None:
+        """Get a strategy's opening cash and holdings snapshot."""
+        with session_factory() as session:
+            snapshot = strategies(session).opening_snapshot(strategy_id)
+            return _json(OpeningSnapshotRead.model_validate(snapshot)) if snapshot else None
+
+    @mcp.tool()
+    def delete_strategy_opening_snapshot(strategy_id: str) -> None:
+        """Delete a strategy opening snapshot when it has no later transactions."""
+        with session_factory() as session:
+            strategies(session).delete_opening_snapshot(strategy_id)
 
     @mcp.tool()
     def get_strategy_trades(strategy_id: str) -> list[dict]:
