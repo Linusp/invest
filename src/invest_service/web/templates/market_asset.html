@@ -70,22 +70,58 @@
     </div>
 </section>
 
-<dialog id="tag-dialog">
-    <form id="tag-form">
+<dialog id="tag-dialog" class="dialog-wide">
+    <div>
         <div class="dialog-header">
             <h2>管理标的标签</h2>
-            <button class="icon-button" type="button" data-close-tag-dialog aria-label="关闭"><i data-lucide="x"></i></button>
+            <div class="actions">
+                <button id="show-tag-add" class="button" type="button">
+                    <i data-lucide="plus"></i><span>增加分组</span>
+                </button>
+                <button class="icon-button" type="button" data-close-tag-dialog aria-label="关闭"><i data-lucide="x"></i></button>
+            </div>
         </div>
         <div class="dialog-body">
-            <label class="field">
-                <span class="label">标签</span>
-                <input id="tag-input" class="input" type="text" maxlength="1300" placeholder="多个标签用逗号分隔">
-            </label>
-            <div class="muted table-caption">一个标的最多 20 个标签；可用中英文逗号或换行分隔。</div>
+            <form id="tag-add-form" class="tag-add-form" hidden>
+                <label class="field">
+                    <span class="label">分组名称</span>
+                    <input id="tag-input" class="input" type="text" maxlength="64" list="tag-options" placeholder="选择已有分组或输入新名称" required>
+                    <datalist id="tag-options"></datalist>
+                </label>
+                <button class="button primary" type="submit">加入</button>
+            </form>
+            <div class="tag-membership-list">
+                <table class="data-table">
+                    <thead><tr>
+                        <th>分组</th>
+                        <th>加入日期</th>
+                        <th class="text-right">加入价格</th>
+                        <th class="text-right">操作</th>
+                    </tr></thead>
+                    <tbody id="tag-membership-body"></tbody>
+                </table>
+                <div id="tag-membership-empty" class="empty-state compact" hidden>当前没有加入任何分组</div>
+            </div>
         </div>
         <div class="dialog-footer">
-            <button class="button" type="button" data-close-tag-dialog>取消</button>
-            <button class="button primary" type="submit">保存</button>
+            <button class="button" type="button" data-close-tag-dialog>完成</button>
+        </div>
+    </div>
+</dialog>
+
+<dialog id="favorite-dialog">
+    <form id="favorite-remove-form">
+        <div class="dialog-header">
+            <h2>确认移出自选</h2>
+            <button class="icon-button" type="button" data-close-favorite-dialog aria-label="关闭"><i data-lucide="x"></i></button>
+        </div>
+        <div class="dialog-body">
+            <p class="dialog-copy">该标的目前位于以下分组。移出自选后，会同时从这些分组中移除，行情历史仍会保留。</p>
+            <div id="favorite-confirm-groups" class="favorite-confirm-groups"></div>
+        </div>
+        <div class="dialog-footer">
+            <button class="button" type="button" data-close-favorite-dialog>取消</button>
+            <button class="button danger" type="submit">确认移出</button>
         </div>
     </form>
 </dialog>
@@ -101,13 +137,18 @@
         poll: null,
         pollAttempts: 0,
         category: {{ category | tojson }},
+        tagMemberships: [],
     };
     const $ = (id) => document.getElementById(id);
     const categoryLabel = {stock: "个股", etf: "ETF", index: "指数"};
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, character => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
     })[character]);
-    const tagNames = () => (state.asset?.tags || []).map(tag => tag.name).filter(Boolean);
+    const tagNames = () => state.asset?.is_favorite
+        ? (state.asset.tags || []).map(tag => tag.name).filter(Boolean)
+        : [];
+    const assetPath = () => "/assets/" + encodeURIComponent(state.asset.category)
+        + "/" + encodeURIComponent(state.asset.symbol);
     const formatDate = (value) => {
         const year = value.getFullYear();
         const month = String(value.getMonth() + 1).padStart(2, "0");
@@ -181,34 +222,107 @@
         await loadHistory(true);
     }
 
-    async function toggleFavorite() {
+    async function addFavorite() {
         state.asset = await api(
-            "/assets/" + encodeURIComponent(state.asset.category) + "/"
-                + encodeURIComponent(state.asset.symbol) + "/favorite",
-            {method: "PUT", body: JSON.stringify({is_favorite: !state.asset.is_favorite})},
+            assetPath() + "/favorite",
+            {method: "PUT", body: JSON.stringify({is_favorite: true})},
         );
         renderAsset();
-        showToast(state.asset.is_favorite ? "已加入自选" : "已移出自选，历史数据仍保留", "success");
+        showToast(`已加入自选，并自动归入“${tagNames().join("、")}”分组`, "success");
     }
 
-    function openTagDialog() {
-        $("tag-input").value = tagNames().join(", ");
-        $("tag-dialog").showModal();
-        $("tag-input").focus();
+    function openFavoriteDialog() {
+        const tags = tagNames();
+        $("favorite-confirm-groups").innerHTML = tags.length
+            ? tags.map(name => `<span class="tag-chip">${escapeHtml(name)}</span>`).join("")
+            : '<span class="muted">当前未分组</span>';
+        $("favorite-dialog").showModal();
+        window.lucide?.createIcons();
     }
 
-    async function saveTags(event) {
+    async function removeFavorite(event) {
         event.preventDefault();
-        const tags = $("tag-input").value.split(/[,，\n]/)
-            .map(value => value.trim()).filter(Boolean);
         state.asset = await api(
-            "/assets/" + encodeURIComponent(state.asset.category) + "/"
-                + encodeURIComponent(state.asset.symbol) + "/tags",
-            {method: "PUT", body: JSON.stringify({tags})},
+            assetPath() + "/favorite",
+            {method: "PUT", body: JSON.stringify({is_favorite: false})},
+        );
+        state.tagMemberships = [];
+        renderAsset();
+        $("favorite-dialog").close();
+        showToast("已移出自选和所有分组，行情历史仍保留", "success");
+    }
+
+    function renderTagMemberships() {
+        const rows = state.tagMemberships;
+        $("tag-membership-body").innerHTML = rows.map(item => `
+            <tr>
+                <td><span class="tag-chip">${escapeHtml(item.name)}</span></td>
+                <td class="mono">${item.favorite_since || "--"}</td>
+                <td class="text-right">${item.favorite_price == null ? "待行情更新" : number(item.favorite_price, 4)}</td>
+                <td class="text-right">
+                    <button class="button danger tag-membership-remove" type="button" data-tag-name="${escapeHtml(item.name)}">
+                        <i data-lucide="trash-2"></i><span>移除</span>
+                    </button>
+                </td>
+            </tr>`).join("");
+        $("tag-membership-empty").hidden = rows.length > 0;
+        $("tag-membership-body").closest("table").hidden = rows.length === 0;
+        document.querySelectorAll(".tag-membership-remove").forEach(button =>
+            button.addEventListener("click", () => removeTag(button.dataset.tagName)
+                .catch(error => showToast(error.message, "error")))
+        );
+        window.lucide?.createIcons();
+    }
+
+    async function loadTagMemberships() {
+        state.tagMemberships = await api(assetPath() + "/tags");
+        renderTagMemberships();
+    }
+
+    async function openTagDialog() {
+        $("tag-add-form").hidden = true;
+        $("tag-input").value = "";
+        $("tag-dialog").showModal();
+        const groups = await api("/tags");
+        $("tag-options").innerHTML = groups
+            .filter(group => !tagNames().includes(group.name))
+            .map(group => `<option value="${escapeHtml(group.name)}"></option>`)
+            .join("");
+        await loadTagMemberships();
+    }
+
+    async function addTag(event) {
+        event.preventDefault();
+        const name = $("tag-input").value.trim();
+        if (!name) return;
+        state.asset = await api(
+            assetPath() + "/tags",
+            {method: "POST", body: JSON.stringify({name})},
         );
         renderAsset();
+        $("tag-input").value = "";
+        $("tag-add-form").hidden = true;
+        await loadTagMemberships();
+        showToast(`已加入“${name}”分组`, "success");
+    }
+
+    async function removeTag(name) {
+        state.asset = await api(
+            assetPath() + "/tags/" + encodeURIComponent(name),
+            {method: "DELETE"},
+        );
+        renderAsset();
+        await loadTagMemberships();
+        showToast(`已从“${name}”分组移除`, "success");
+    }
+
+    function toggleTagAddForm() {
+        $("tag-add-form").hidden = !$("tag-add-form").hidden;
+        if (!$("tag-add-form").hidden) $("tag-input").focus();
+    }
+
+    function closeTagDialog() {
         $("tag-dialog").close();
-        showToast("标签已保存", "success");
     }
 
     async function loadHistory(pollWhenEmpty = false) {
@@ -350,15 +464,25 @@
         document.querySelectorAll("[data-range]").forEach(button => button.classList.remove("active"));
         loadHistory(false);
     }));
-    $("favorite-toggle").addEventListener("click", () =>
-        toggleFavorite().catch(error => showToast(error.message, "error"))
+    $("favorite-toggle").addEventListener("click", () => {
+        if (state.asset.is_favorite) openFavoriteDialog();
+        else addFavorite().catch(error => showToast(error.message, "error"));
+    });
+    $("favorite-remove-form").addEventListener("submit", event =>
+        removeFavorite(event).catch(error => showToast(error.message, "error"))
     );
-    $("edit-tags").addEventListener("click", openTagDialog);
-    $("tag-form").addEventListener("submit", event =>
-        saveTags(event).catch(error => showToast(error.message, "error"))
+    document.querySelectorAll("[data-close-favorite-dialog]").forEach(button =>
+        button.addEventListener("click", () => $("favorite-dialog").close())
+    );
+    $("edit-tags").addEventListener("click", () =>
+        openTagDialog().catch(error => showToast(error.message, "error"))
+    );
+    $("show-tag-add").addEventListener("click", toggleTagAddForm);
+    $("tag-add-form").addEventListener("submit", event =>
+        addTag(event).catch(error => showToast(error.message, "error"))
     );
     document.querySelectorAll("[data-close-tag-dialog]").forEach(button =>
-        button.addEventListener("click", () => $("tag-dialog").close())
+        button.addEventListener("click", closeTagDialog)
     );
     window.addEventListener("resize", () => state.chart?.resize());
     setRange("1y", false);

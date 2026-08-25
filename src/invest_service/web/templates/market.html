@@ -18,7 +18,12 @@
     <aside class="panel tag-sidebar">
         <div class="panel-header">
             <h2 class="panel-title">标签分组</h2>
-            <span id="tag-count" class="badge">0</span>
+            <div class="actions">
+                <span id="tag-count" class="badge">0</span>
+                <button id="create-tag" class="icon-button" type="button" title="新建分组" aria-label="新建分组">
+                    <i data-lucide="plus"></i>
+                </button>
+            </div>
         </div>
         <div id="tag-list" class="tag-list"></div>
     </aside>
@@ -29,6 +34,16 @@
                 <h2 id="selected-tag-name" class="panel-title">选择标签</h2>
                 <div id="selected-tag-meta" class="muted table-caption"></div>
             </div>
+            <button id="add-tag-asset" class="icon-button" type="button" title="添加标的到当前分组" aria-label="添加标的到当前分组" disabled>
+                <i data-lucide="plus"></i>
+            </button>
+        </div>
+        <div id="tag-asset-add-form" class="tag-asset-add-form" hidden>
+            <div class="search-box">
+                <input id="tag-asset-search" class="input" type="search" placeholder="搜索标的并加入当前分组" autocomplete="off">
+                <div id="tag-asset-search-results" class="search-results" hidden></div>
+            </div>
+            <span id="tag-asset-search-hint" class="muted table-caption"></span>
         </div>
         <div class="table-wrap">
             <table class="data-table tag-asset-table">
@@ -40,6 +55,7 @@
                         <th class="text-right"><button type="button" data-sort="favorite_price">自选价格</button></th>
                         <th class="text-right"><button type="button" data-sort="change_percent">当日涨跌幅</button></th>
                         <th class="text-right"><button type="button" data-sort="latest_price">当日价格</button></th>
+                        <th class="text-right">操作</th>
                     </tr>
                 </thead>
                 <tbody id="tag-assets-body"></tbody>
@@ -50,6 +66,25 @@
         </div>
     </section>
 </div>
+<dialog id="tag-create-dialog">
+    <form id="tag-create-form">
+        <div class="dialog-header">
+            <h2>新建分组</h2>
+            <button class="icon-button" type="button" data-close-create-tag aria-label="关闭"><i data-lucide="x"></i></button>
+        </div>
+        <div class="dialog-body">
+            <label class="field">
+                <span class="label">分组名称</span>
+                <input id="new-tag-name" class="input" type="text" maxlength="64" placeholder="例如：长期观察" required>
+            </label>
+            <div class="muted table-caption">创建后可以在分组列表顶部搜索并添加标的。</div>
+        </div>
+        <div class="dialog-footer">
+            <button class="button" type="button" data-close-create-tag>取消</button>
+            <button class="button primary" type="submit">创建分组</button>
+        </div>
+    </form>
+</dialog>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -63,6 +98,7 @@
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
     })[character]);
     const categoryLabel = {stock: "个股", etf: "ETF", index: "指数"};
+    const defaultTagCategories = {"个股": "stock", "ETF": "etf", "指数": "index"};
     const signedPercent = (value) => {
         if (value == null) return "--";
         const numeric = Number(value);
@@ -81,7 +117,10 @@
                 <button class="tag-select" type="button" data-select-tag="${escapeHtml(tag.name)}">
                     <span>${tag.is_pinned ? '<i data-lucide="pin"></i>' : '<span class="tag-order-dot"></span>'}</span>
                     <strong>${escapeHtml(tag.name)}</strong>
-                    <span class="tag-asset-count">${tag.asset_count}</span>
+                    <span class="tag-list-meta">
+                        ${defaultTagCategories[tag.name] ? '<i data-lucide="lock" title="系统分类分组"></i>' : ''}
+                        <span class="tag-asset-count">${tag.asset_count}</span>
+                    </span>
                 </button>
                 <span class="tag-order-actions">
                     <button type="button" data-pin-tag="${escapeHtml(tag.name)}" data-pin-value="${!tag.is_pinned}"
@@ -96,6 +135,8 @@
                             ${index === state.tags.length - 1 ? "disabled" : ""} title="下移" aria-label="下移">
                         <i data-lucide="chevron-down"></i>
                     </button>
+                    ${defaultTagCategories[tag.name] ? '' : `<button type="button" data-delete-tag="${escapeHtml(tag.name)}"
+                            title="删除分组" aria-label="删除分组"><i data-lucide="trash-2"></i></button>`}
                 </span>
             </div>`).join("") :
             '<div class="empty-state compact"><div>暂无标签分组</div></div>';
@@ -113,6 +154,10 @@
                 button.dataset.moveTag,
                 Number(button.dataset.delta),
             ).catch(error => showToast(error.message, "error")));
+        });
+        $("tag-list").querySelectorAll("[data-delete-tag]").forEach(button => {
+            button.addEventListener("click", () => deleteTag(button.dataset.deleteTag)
+                .catch(error => showToast(error.message, "error")));
         });
         window.lucide?.createIcons();
     }
@@ -150,6 +195,14 @@
                     <strong>${price(asset.latest_price, asset.currency)}</strong>
                     <small class="latest-price-date">${asset.latest_price_date || "暂无行情"}</small>
                 </td>
+                <td class="text-right">
+                    <button class="button danger tag-asset-remove" type="button"
+                            data-remove-category="${escapeHtml(asset.category)}"
+                            data-remove-symbol="${escapeHtml(asset.symbol)}"
+                            title="从当前分组移除" aria-label="从当前分组移除">
+                        <i data-lucide="trash-2"></i><span>删除</span>
+                    </button>
+                </td>
             </tr>`).join("");
         document.querySelectorAll("[data-sort]").forEach(button => {
             button.classList.toggle("active", button.dataset.sort === state.sortKey);
@@ -157,11 +210,87 @@
                 ? state.sortDirection : "";
         });
         window.lucide?.createIcons();
+        document.querySelectorAll(".tag-asset-remove").forEach(button => {
+            button.addEventListener("click", () => removeAssetFromTag(
+                button.dataset.removeCategory,
+                button.dataset.removeSymbol,
+            ).catch(error => showToast(error.message, "error")));
+        });
+    }
+
+    let searchTimer = null;
+
+    function renderTagAssetAddState() {
+        const category = defaultTagCategories[state.selectedTag] || "";
+        $("add-tag-asset").disabled = !state.selectedTag;
+        $("tag-asset-search-hint").textContent = category
+            ? `系统分类分组，仅搜索${categoryLabel[category]}标的`
+            : "自定义分组可搜索全部类别";
+    }
+
+    function renderTagAssetSearchResults(assets) {
+        const existing = new Set(state.assets.map(asset => `${asset.category}:${asset.symbol}`));
+        const candidates = assets.filter(asset => !existing.has(`${asset.category}:${asset.symbol}`));
+        $("tag-asset-search-results").innerHTML = candidates.map(asset => `
+            <button class="search-option" type="button"
+                    data-add-category="${escapeHtml(asset.category)}"
+                    data-add-symbol="${escapeHtml(asset.symbol)}">
+                <span><strong>${escapeHtml(asset.name)}</strong><small class="mono muted">${escapeHtml(asset.symbol)}</small></span>
+                <span class="badge">${categoryLabel[asset.category] || escapeHtml(asset.category)}</span>
+            </button>`).join("");
+        $("tag-asset-search-results").hidden = candidates.length === 0;
+        document.querySelectorAll("[data-add-category]").forEach(button => {
+            button.addEventListener("click", () => addAssetToTag(
+                button.dataset.addCategory,
+                button.dataset.addSymbol,
+            ).catch(error => showToast(error.message, "error")));
+        });
+    }
+
+    async function searchAssetsForTag() {
+        const query = $("tag-asset-search").value.trim();
+        if (!query || !state.selectedTag) {
+            $("tag-asset-search-results").hidden = true;
+            return;
+        }
+        const params = new URLSearchParams({q: query, limit: "12"});
+        const category = defaultTagCategories[state.selectedTag];
+        if (category) params.set("category", category);
+        const assets = await api("/assets/search?" + params);
+        renderTagAssetSearchResults(assets);
+    }
+
+    async function addAssetToTag(category, symbol) {
+        await api(
+            "/assets/" + encodeURIComponent(category) + "/"
+                + encodeURIComponent(symbol) + "/tags",
+            {
+                method: "POST",
+                body: JSON.stringify({name: state.selectedTag}),
+            },
+        );
+        $("tag-asset-search").value = "";
+        $("tag-asset-search-results").hidden = true;
+        await selectTag(state.selectedTag, false);
+        await loadTags(state.selectedTag);
+        showToast(`已加入“${state.selectedTag}”分组`, "success");
+    }
+
+    async function removeAssetFromTag(category, symbol) {
+        await api(
+            "/assets/" + encodeURIComponent(category) + "/"
+                + encodeURIComponent(symbol) + "/tags/"
+                + encodeURIComponent(state.selectedTag),
+            {method: "DELETE"},
+        );
+        await loadTags(state.selectedTag);
+        showToast("已从当前分组移除", "success");
     }
 
     async function selectTag(name, updateLocation = true) {
         state.selectedTag = name;
         renderTags();
+        renderTagAssetAddState();
         $("selected-tag-name").textContent = name;
         $("tag-assets-body").closest("section").classList.add("loading");
         try {
@@ -197,17 +326,48 @@
         showToast(isPinned ? `已置顶“${name}”` : `已取消置顶“${name}”`, "success");
     }
 
-    async function loadTags() {
+    async function deleteTag(name) {
+        if (!confirm(`确定删除“${name}”分组吗？其中的标的不会被取消自选。`)) return;
+        await api("/tags/" + encodeURIComponent(name), {method: "DELETE"});
+        await loadTags();
+        showToast(`已删除“${name}”分组`, "success");
+    }
+
+    async function loadTags(preferredTag = state.selectedTag) {
         state.tags = await api("/tags");
         renderTags();
         if (!state.tags.length) {
+            state.selectedTag = null;
+            state.assets = [];
+            $("selected-tag-name").textContent = "选择标签";
+            $("selected-tag-meta").textContent = "";
+            renderTagAssetAddState();
             $("tag-assets-empty").hidden = false;
             return;
         }
-        const requested = new URLSearchParams(location.search).get("tag");
+        const requested = preferredTag || new URLSearchParams(location.search).get("tag");
         const initial = state.tags.some(tag => tag.name === requested)
             ? requested : state.tags[0].name;
         await selectTag(initial, false);
+    }
+
+    function openCreateTag() {
+        $("new-tag-name").value = "";
+        $("tag-create-dialog").showModal();
+        $("new-tag-name").focus();
+    }
+
+    async function createTag(event) {
+        event.preventDefault();
+        const name = $("new-tag-name").value.trim();
+        if (!name) return;
+        const tag = await api("/tags", {
+            method: "POST",
+            body: JSON.stringify({name}),
+        });
+        $("tag-create-dialog").close();
+        await loadTags(tag.name);
+        showToast(`已创建“${tag.name}”分组`, "success");
     }
 
     document.querySelectorAll("[data-sort]").forEach(button => {
@@ -222,6 +382,23 @@
             renderAssets();
         });
     });
+    $("add-tag-asset").addEventListener("click", () => {
+        const form = $("tag-asset-add-form");
+        form.hidden = !form.hidden;
+        if (!form.hidden) $("tag-asset-search").focus();
+    });
+    $("tag-asset-search").addEventListener("input", () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => searchAssetsForTag()
+            .catch(error => showToast(error.message, "error")), 220);
+    });
+    $("create-tag").addEventListener("click", openCreateTag);
+    $("tag-create-form").addEventListener("submit", event =>
+        createTag(event).catch(error => showToast(error.message, "error"))
+    );
+    document.querySelectorAll("[data-close-create-tag]").forEach(button =>
+        button.addEventListener("click", () => $("tag-create-dialog").close())
+    );
     loadTags().catch(error => showToast(error.message, "error"));
 })();
 </script>
