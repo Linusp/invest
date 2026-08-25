@@ -137,7 +137,7 @@
         $("tag-assets-body").innerHTML = rows.map(asset => `
             <tr>
                 <td>
-                    <a class="table-asset-link" href="/market/${encodeURIComponent(asset.symbol)}">
+                    <a class="table-asset-link" href="/market/${encodeURIComponent(asset.category)}/${encodeURIComponent(asset.symbol)}">
                         <span><strong class="asset-name">${escapeHtml(asset.name)}</strong><small class="asset-code mono">${escapeHtml(asset.symbol)}</small></span>
                         <span class="badge">${categoryLabel[asset.category] || escapeHtml(asset.category)}</span>
                     </a>

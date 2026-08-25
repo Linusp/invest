@@ -3,7 +3,8 @@
 独立的投资数据服务，提供 FastAPI REST API 与 MCP Streamable HTTP/stdio
 两种接口。服务负责：
 
-- 带原始计价币种的个股、ETF、指数搜索、注册、标签分组、日线同步和历史行情查询。
+- 个股、ETF、指数的本地模糊搜索、注册、标签分组、日线同步和历史行情查询。
+- 由 Celery 定时聚合 AkShare/Tushare 标的目录，维护名称、别名、曾用名及拼音索引。
 - 从欧洲央行同步每日汇率，将多币种资产统一折算到系统报告币种。
 - 通过 Celery Beat 定时更新已注册标的和 ECB 汇率，由 Celery Worker 执行任务。
 - 策略创建、列表、详情与元数据修改。
@@ -33,14 +34,17 @@ cp .env.example .env
 
 Worker 和 Beat 需要 Redis；本地 Redis 地址通过
 `INVEST_CELERY_BROKER_URL` 配置。若只调试查询 API，可以暂不启动二者。
-首次使用时通过行情页搜索标的；服务会注册搜索结果、自动投递后台行情任务，
-页面会短暂轮询等待数据，无需手动调用同步接口。未配置 Tushare token 时页面会
-直接显示配置提示，不再等待慢速兜底发现。
+搜索请求只读取本地索引，不会调用远端行情源。Celery Beat 默认每天构建一次
+目录索引；已有数据库中的标的会在 API 启动时自动写入索引。搜索结果不会自动
+加入自选，进入标的页后可按需加入。未配置 Tushare token 时本地搜索和免费目录
+仍可使用，页面会提示缺少付费补全源。
 
 默认 API 地址是 `http://127.0.0.1:8000`，OpenAPI 文档位于
 `/docs`，MCP Streamable HTTP 端点是 `/mcp/`。Web 页面位于：
 
-- `/market`：按标签折叠分组的标的列表、行情更新、K 线和历史明细；默认打开上证指数。
+- `/market`：按标签分组的自选列表，可置顶、排序标签和表格字段。
+- `/market/{category}/{symbol}`：单个标的的 K 线、历史明细和快捷日期范围。
+  旧的 `/market/{symbol}` 会在 symbol 唯一时自动跳转；跨分类重码时必须明确分类。
 - `/strategy`：策略、交易、持仓和盈亏管理。
 
 也可以使用 stdio：
@@ -105,11 +109,12 @@ Web 页面所需的 ECharts 和 Lucide 已随镜像提供并启用 gzip，不依
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/v1/assets/search?q=...` | 搜索并自动注册标的 |
+| `GET` | `/api/v1/assets/search?q=...` | 从本地索引模糊搜索标的，可按 `category` 分类 |
 | `POST` | `/api/v1/assets` | 手动注册标的 |
-| `PUT` | `/api/v1/assets/{symbol}/tags` | 覆盖标的的多标签列表 |
-| `PUT` | `/api/v1/assets/{symbol}/favorite` | 加入或移出自选（保留资产与行情数据） |
-| `GET` | `/api/v1/assets/{symbol}/history` | 查询历史行情 |
+| `GET` | `/api/v1/assets/{category}/{symbol}` | 查询分类明确的标的 |
+| `PUT` | `/api/v1/assets/{category}/{symbol}/tags` | 覆盖标的的多标签列表 |
+| `PUT` | `/api/v1/assets/{category}/{symbol}/favorite` | 加入或移出自选（保留资产与行情数据） |
+| `GET` | `/api/v1/assets/{category}/{symbol}/history` | 查询历史行情 |
 | `GET` | `/api/v1/exchange-rates/{currency}` | 查询指定日期前最近汇率 |
 | `POST` | `/api/v1/strategies` | 创建策略 |
 | `GET` | `/api/v1/strategies/{id}` | 查询策略详情 |
@@ -125,6 +130,11 @@ Web 页面所需的 ECharts 和 Lucide 已随镜像提供并启用 gzip，不依
 标的自动确定；入金和出金的 `price` 表示现金金额，必须明确币种，且不能携带
 标的或数量。客户端可传
 `idempotency_key` 安全重试新增交易。
+
+标的身份由 `category + symbol` 共同确定。行情、标签自选日期、策略期初持仓与
+交易都会保存这个分类明确的身份，因此不同分类即使使用完全相同的 symbol 也
+不会覆盖。交易及期初持仓请求可传 `asset_category`；旧请求在 symbol 全局唯一
+时继续兼容，出现重码时必须补充该字段。
 
 每笔买卖交易都会返回 `position_id`，入金和出金的该字段为空。同一标的只在某个
 交易日结束后持仓为零时结束当前持仓周期；因此同日先清仓再买回仍使用原
@@ -161,6 +171,7 @@ API、Worker 和 Beat。
 - `AUTO_UPDATE_ENABLED`：是否让 Beat 注册定时任务，默认 `true`。
 - `AUTO_UPDATE_INTERVAL_MINUTES`：更新周期，默认 60 分钟。
 - `AUTO_UPDATE_LOOKBACK_DAYS`：每次回溯天数，默认 10 天。
+- `SEARCH_INDEX_UPDATE_HOUR`：每日目录索引更新时间（Asia/Shanghai），默认 3 点。
 - `REPORTING_CURRENCY`：策略汇总的统一报告币种，默认 `CNY`。
 - `EXCHANGE_RATE_UPDATE_HOUR`：每日汇率更新时间（Asia/Shanghai），默认 23 点。
 - `MARKET_PROVIDER`：配置的付费/显式行情源，默认 `tushare`；设为
@@ -183,14 +194,17 @@ API、Worker 和 Beat。
 `INVEST_WORKER_CONCURRENCY` 是 Compose 自身使用的部署变量，不会进入应用
 `Settings`；Compose 最终会把对应的 `INVEST_*` 应用变量注入容器。
 
-API 进程不再执行调度，也不提供手动同步 REST/MCP 接口。Beat 默认每 60 分钟
-发布一次全市场更新任务，每天 Asia/Shanghai 时区的配置小时 30 分发布汇率更新
-任务；Worker 负责执行。部署中应保持一个 Beat 实例，Worker 可以按负载扩容。
+API 进程不执行调度，也不提供手动同步 REST/MCP 接口。Beat 默认每 60 分钟
+发布一次自选及持仓行情更新任务，每天 3:10 构建本地标的索引，并在配置的汇率
+小时 30 分发布汇率更新任务；Worker 负责执行。部署中应保持一个 Beat 实例，
+Worker 可以按负载扩容。
 
-默认免费优先顺序为：个股使用 AkShare 腾讯、AkShare 新浪、东方财富后再用
-Tushare；指数使用 AkShare 腾讯、AkShare 新浪后再用 Tushare；ETF 使用
-东方财富、AkShare 新浪后再用 Tushare。搜索同样先使用免费源，仅在免费源
-均无结果时使用 Tushare。
+默认免费优先的行情顺序为：个股使用 AkShare 腾讯、AkShare 新浪、东方财富后
+再用 Tushare；指数使用 AkShare 腾讯、AkShare 新浪后再用 Tushare；ETF 使用
+东方财富、AkShare 新浪后再用 Tushare。目录任务会合并 AkShare 的 A 股、ETF、
+指数列表与 Tushare 的股票、ETF、指数及股票曾用名列表；单个目录源失败时保留
+其他来源的结果。
+索引仅保存在现有 SQL 数据库中，使用 RapidFuzz 排序，不需要部署 Elasticsearch。
 Tushare 分别通过 `daily`、`fund_daily`、`index_daily` 获取个股、ETF
 和指数日线，返回的成交额会从千元换算为元。单个标的第一次同步默认回填
 十年，后续更新仅回溯配置的天数。最近三天的行情会覆盖更新，更早的数据保持

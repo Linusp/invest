@@ -210,6 +210,7 @@
                     <span class="label">标的</span>
                     <input id="asset-search" class="input" type="search" placeholder="代码或名称" autocomplete="off">
                     <input id="asset-symbol" type="hidden">
+                    <input id="asset-category" type="hidden">
                     <div id="asset-search-results" class="search-results" hidden></div>
                 </label>
                 <div id="selected-asset" class="muted mono" style="font-size:11px; margin-top:6px"></div>
@@ -266,6 +267,7 @@
     })[c]);
     const typeLabel = {buy: "买入", sell: "卖出", deposit: "入金", withdraw: "出金"};
     const signedClass = value => Number(value || 0) >= 0 ? "positive" : "negative";
+    const assetIdentity = asset => `${asset.category}:${asset.symbol}`;
 
     function renderStrategies() {
         $("strategy-list").innerHTML = state.strategies.length ? state.strategies.map(item => `
@@ -297,10 +299,10 @@
         try {
             state.detail = await api("/strategies/" + id);
             for (const position of state.detail.positions) {
-                state.assets.set(position.asset.symbol, position.asset);
+                state.assets.set(assetIdentity(position.asset), position.asset);
             }
             for (const position of state.detail.opening_snapshot?.positions || []) {
-                state.assets.set(position.asset.symbol, position.asset);
+                state.assets.set(assetIdentity(position.asset), position.asset);
             }
             renderDetail();
             showDetail(true);
@@ -352,7 +354,7 @@
         const rows = state.detail.positions;
         $("positions-body").innerHTML = rows.length ? rows.map(position => `
             <tr>
-                <td><a href="/market/${encodeURIComponent(position.asset.symbol)}">
+                <td><a href="/market/${encodeURIComponent(position.asset.category)}/${encodeURIComponent(position.asset.symbol)}">
                     <div class="asset-name">${escapeHtml(position.asset.name)}</div>
                     <div class="asset-code mono">${escapeHtml(position.asset.symbol)}</div>
                 </a></td>
@@ -370,7 +372,7 @@
     function renderTrades() {
         const rows = state.detail.trades;
         $("trades-body").innerHTML = rows.length ? rows.map(trade => {
-            const asset = state.assets.get(trade.asset_symbol);
+            const asset = state.assets.get(`${trade.asset_category}:${trade.asset_symbol}`);
             return `<tr>
                 <td class="mono">${trade.trade_date}</td>
                 <td><span class="badge ${trade.type}">${typeLabel[trade.type]}</span></td>
@@ -427,6 +429,7 @@
         $("trade-fee").value = "0";
         $("trade-currency").value = state.detail.summary.reporting_currency;
         $("asset-symbol").value = "";
+        $("asset-category").value = "";
         $("selected-asset").textContent = "";
         toggleTradeFields();
         $("trade-dialog").showModal();
@@ -518,15 +521,18 @@
         try {
             const assets = await api("/assets/search?q=" + encodeURIComponent(query) + "&limit=12");
             $("snapshot-search-results").innerHTML = assets.map(asset => `
-                <button class="search-option" type="button" data-snapshot-symbol="${escapeHtml(asset.symbol)}">
+                <button class="search-option" type="button" data-snapshot-symbol="${escapeHtml(asset.symbol)}" data-snapshot-category="${escapeHtml(asset.category)}">
                     <strong>${escapeHtml(asset.name)}</strong><span class="mono muted">${escapeHtml(asset.symbol)}</span>
                 </button>`).join("");
             $("snapshot-search-results").hidden = !assets.length;
             $("snapshot-search-results").querySelectorAll("[data-snapshot-symbol]").forEach(button => {
                 button.addEventListener("click", () => {
-                    const asset = assets.find(item => item.symbol === button.dataset.snapshotSymbol);
+                    const asset = assets.find(item =>
+                        item.symbol === button.dataset.snapshotSymbol
+                        && item.category === button.dataset.snapshotCategory
+                    );
                     state.snapshotAsset = asset;
-                    state.assets.set(asset.symbol, asset);
+                    state.assets.set(assetIdentity(asset), asset);
                     $("snapshot-asset-search").value = asset.name;
                     $("snapshot-selected-asset").textContent = `${asset.symbol} · ${asset.currency}`;
                     $("snapshot-search-results").hidden = true;
@@ -544,7 +550,9 @@
             return showToast("数量和平均成本必须大于 0", "error");
         }
         const position = {asset: state.snapshotAsset, quantity, average_cost: averageCost};
-        const index = state.snapshotPositions.findIndex(item => item.asset.symbol === state.snapshotAsset.symbol);
+        const index = state.snapshotPositions.findIndex(item =>
+            assetIdentity(item.asset) === assetIdentity(state.snapshotAsset)
+        );
         if (index >= 0) state.snapshotPositions[index] = position;
         else state.snapshotPositions.push(position);
         resetSnapshotPositionInputs();
@@ -576,6 +584,7 @@
             balances: state.snapshotBalances.map(balance => ({...balance})),
             positions: state.snapshotPositions.map(position => ({
                 asset_symbol: position.asset.symbol,
+                asset_category: position.asset.category,
                 quantity: String(position.quantity),
                 average_cost: String(position.average_cost),
             })),
@@ -614,6 +623,7 @@
     async function searchAssets() {
         const query = $("asset-search").value.trim();
         $("asset-symbol").value = "";
+        $("asset-category").value = "";
         $("selected-asset").textContent = "";
         if (!query) {
             $("asset-search-results").hidden = true;
@@ -630,15 +640,19 @@
                 assets = await api("/assets/search?q=" + encodeURIComponent(query) + "&limit=12");
             }
             $("asset-search-results").innerHTML = assets.map(asset => `
-                <button class="search-option" type="button" data-asset-symbol="${escapeHtml(asset.symbol)}">
+                <button class="search-option" type="button" data-asset-symbol="${escapeHtml(asset.symbol)}" data-asset-category="${escapeHtml(asset.category)}">
                     <strong>${escapeHtml(asset.name)}</strong><span class="mono muted">${escapeHtml(asset.symbol)}</span>
                 </button>`).join("");
             $("asset-search-results").hidden = !assets.length;
             $("asset-search-results").querySelectorAll("[data-asset-symbol]").forEach(button => {
                 button.addEventListener("click", () => {
-                    const asset = assets.find(item => item.symbol === button.dataset.assetSymbol);
-                    state.assets.set(asset.symbol, asset);
+                    const asset = assets.find(item =>
+                        item.symbol === button.dataset.assetSymbol
+                        && item.category === button.dataset.assetCategory
+                    );
+                    state.assets.set(assetIdentity(asset), asset);
                     $("asset-symbol").value = asset.symbol;
+                    $("asset-category").value = asset.category;
                     $("asset-search").value = asset.name;
                     $("selected-asset").textContent = `${asset.symbol} · ${asset.currency}`;
                     $("asset-search-results").hidden = true;
@@ -662,6 +676,7 @@
             quantity: cash ? "0" : $("trade-quantity").value,
             fee: cash ? "0" : $("trade-fee").value || "0",
             asset_symbol: cash ? null : $("asset-symbol").value,
+            asset_category: cash ? null : $("asset-category").value,
             currency: cash ? $("trade-currency").value.trim().toUpperCase() : null,
             note: $("trade-note").value.trim() || null,
             idempotency_key: crypto.randomUUID?.() || String(Date.now()),

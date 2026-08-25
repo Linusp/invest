@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Invest{% endblock %}</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="/static/app.css?v=20260825">
+    <link rel="stylesheet" href="/static/app.css?v=20260825-2">
     <script src="/static/vendor/lucide-0.468.0.min.js"></script>
     {% block head %}{% endblock %}
 </head>
@@ -17,7 +17,13 @@
         </a>
         <form id="global-market-search" class="global-search" role="search">
             <i data-lucide="search"></i>
-            <input id="global-market-query" type="search" placeholder="搜索代码或名称" autocomplete="off" aria-label="搜索行情标的">
+            <select id="global-market-category" aria-label="搜索标的类型">
+                <option value="">全部</option>
+                <option value="stock">个股</option>
+                <option value="etf">ETF</option>
+                <option value="index">指数</option>
+            </select>
+            <input id="global-market-query" type="search" placeholder="搜索代码、名称或拼音" autocomplete="off" aria-label="搜索行情标的">
             <div id="global-market-results" class="global-search-results" hidden></div>
         </form>
         <nav class="nav-tabs" aria-label="主导航">
@@ -66,17 +72,20 @@
         (() => {
             const form = document.getElementById("global-market-search");
             const input = document.getElementById("global-market-query");
+            const category = document.getElementById("global-market-category");
             const results = document.getElementById("global-market-results");
             let timer = null;
             let assets = [];
             let activeIndex = -1;
+            const categoryLabels = {stock: "个股", etf: "ETF", index: "指数"};
 
             const hideResults = () => {
                 results.hidden = true;
                 activeIndex = -1;
             };
             const openAsset = (asset) => {
-                if (asset) location.href = "/market/" + encodeURIComponent(asset.symbol);
+                if (asset) location.href = "/market/" + encodeURIComponent(asset.category)
+                    + "/" + encodeURIComponent(asset.symbol);
             };
             const renderResults = () => {
                 results.replaceChildren();
@@ -88,13 +97,19 @@
                     const identity = document.createElement("span");
                     const name = document.createElement("strong");
                     const symbol = document.createElement("small");
-                    const currency = document.createElement("span");
+                    const metadata = document.createElement("span");
+                    const type = document.createElement("span");
+                    const currency = document.createElement("small");
                     name.textContent = asset.name;
                     symbol.textContent = asset.symbol;
-                    currency.className = "badge";
+                    metadata.className = "global-search-metadata";
+                    type.className = "badge";
+                    type.textContent = categoryLabels[asset.category] || asset.category;
+                    currency.className = "global-search-currency";
                     currency.textContent = asset.currency;
                     identity.append(name, symbol);
-                    button.append(identity, currency);
+                    metadata.append(type, currency);
+                    button.append(identity, metadata);
                     button.addEventListener("mousedown", event => event.preventDefault());
                     button.addEventListener("click", () => openAsset(asset));
                     results.append(button);
@@ -109,7 +124,9 @@
                     return;
                 }
                 try {
-                    assets = await api("/assets/search?q=" + encodeURIComponent(query) + "&limit=10");
+                    const params = new URLSearchParams({q: query, limit: "10"});
+                    if (category.value) params.set("category", category.value);
+                    assets = await api("/assets/search?" + params);
                     activeIndex = -1;
                     renderResults();
                 } catch (error) {
@@ -130,6 +147,10 @@
             input.addEventListener("input", () => {
                 clearTimeout(timer);
                 timer = setTimeout(search, 260);
+            });
+            category.addEventListener("change", () => {
+                clearTimeout(timer);
+                search();
             });
             input.addEventListener("focus", () => {
                 if (assets.length) results.hidden = false;

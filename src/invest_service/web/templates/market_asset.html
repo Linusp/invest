@@ -94,7 +94,14 @@
 <script>
 (() => {
     const symbol = {{ symbol | tojson }};
-    const state = {asset: null, history: [], chart: null, poll: null, pollAttempts: 0};
+    const state = {
+        asset: null,
+        history: [],
+        chart: null,
+        poll: null,
+        pollAttempts: 0,
+        category: {{ category | tojson }},
+    };
     const $ = (id) => document.getElementById(id);
     const categoryLabel = {stock: "个股", etf: "ETF", index: "指数"};
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, character => ({
@@ -166,14 +173,18 @@
     }
 
     async function loadAsset() {
-        state.asset = await api("/assets/" + encodeURIComponent(symbol));
+        state.asset = await api(
+            "/assets/" + encodeURIComponent(state.category) + "/"
+                + encodeURIComponent(symbol)
+        );
         renderAsset();
         await loadHistory(true);
     }
 
     async function toggleFavorite() {
         state.asset = await api(
-            "/assets/" + encodeURIComponent(state.asset.symbol) + "/favorite",
+            "/assets/" + encodeURIComponent(state.asset.category) + "/"
+                + encodeURIComponent(state.asset.symbol) + "/favorite",
             {method: "PUT", body: JSON.stringify({is_favorite: !state.asset.is_favorite})},
         );
         renderAsset();
@@ -191,7 +202,8 @@
         const tags = $("tag-input").value.split(/[,，\n]/)
             .map(value => value.trim()).filter(Boolean);
         state.asset = await api(
-            "/assets/" + encodeURIComponent(state.asset.symbol) + "/tags",
+            "/assets/" + encodeURIComponent(state.asset.category) + "/"
+                + encodeURIComponent(state.asset.symbol) + "/tags",
             {method: "PUT", body: JSON.stringify({tags})},
         );
         renderAsset();
@@ -209,7 +221,8 @@
                 limit: "10000",
             });
             state.history = await api(
-                "/assets/" + encodeURIComponent(state.asset.symbol) + "/history?" + params
+                "/assets/" + encodeURIComponent(state.asset.category) + "/"
+                    + encodeURIComponent(state.asset.symbol) + "/history?" + params
             );
             renderQuote();
             renderChart();
