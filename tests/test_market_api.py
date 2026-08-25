@@ -118,6 +118,63 @@ def test_asset_can_be_hidden_and_restored_without_deleting_data(client):
     assert any(item["symbol"] == "600000.SH" for item in client.get("/api/v1/assets").json())
 
 
+def test_favorite_auto_groups_and_manages_tag_memberships_individually(client):
+    client.get("/api/v1/assets/search", params={"q": "600000"})
+    with client.app.state.session_factory() as session:
+        MarketService(session, client.app.state.market_provider).sync_asset(
+            "600000.SH",
+            category=AssetCategory.STOCK,
+        )
+
+    favorite = client.put(
+        "/api/v1/assets/stock/600000.SH/favorite",
+        json={"is_favorite": True},
+    )
+    assert favorite.status_code == 200
+    assert favorite.json()["tags"] == [{"name": "个股"}]
+
+    memberships = client.get(
+        "/api/v1/assets/stock/600000.SH/tags"
+    ).json()
+    assert memberships == [
+        {
+            "name": "个股",
+            "favorite_since": date.today().isoformat(),
+            "favorite_price": "110.000000",
+        }
+    ]
+
+    added = client.post(
+        "/api/v1/assets/stock/600000.SH/tags",
+        json={"name": "长期  观察"},
+    )
+    assert added.status_code == 200
+    assert {item["name"] for item in added.json()["tags"]} == {
+        "个股",
+        "长期 观察",
+    }
+    memberships = client.get(
+        "/api/v1/assets/stock/600000.SH/tags"
+    ).json()
+    assert {item["name"] for item in memberships} == {"个股", "长期 观察"}
+    assert all(item["favorite_since"] == date.today().isoformat() for item in memberships)
+    assert all(item["favorite_price"] == "110.000000" for item in memberships)
+
+    removed = client.delete(
+        "/api/v1/assets/stock/600000.SH/tags/%E9%95%BF%E6%9C%9F%20%E8%A7%82%E5%AF%9F"
+    )
+    assert removed.status_code == 200
+    assert removed.json()["tags"] == [{"name": "个股"}]
+
+    hidden = client.put(
+        "/api/v1/assets/stock/600000.SH/favorite",
+        json={"is_favorite": False},
+    )
+    assert hidden.status_code == 200
+    assert hidden.json()["tags"] == []
+    assert client.get("/api/v1/assets/stock/600000.SH/tags").json() == []
+
+
 def test_manual_stock_uses_market_as_default_tag(client):
     response = client.post(
         "/api/v1/assets",
@@ -238,10 +295,17 @@ def test_tag_groups_can_be_reordered_pinned_and_summarized(client):
             json={"is_favorite": True},
         )
 
+    wrong_default_group = client.post(
+        "/api/v1/assets/stock/600000.SH/tags",
+        json={"name": "ETF"},
+    )
+    assert wrong_default_group.status_code == 422
+    assert "only accepts etf assets" in wrong_default_group.json()["detail"]
+
     tags = client.get("/api/v1/tags").json()
     names = [tag["name"] for tag in tags]
-    assert {"指数", "银行", "ETF"} <= set(names)
-    assert next(tag for tag in tags if tag["name"] == "银行")["asset_count"] == 1
+    assert {"指数", "个股", "ETF"} <= set(names)
+    assert next(tag for tag in tags if tag["name"] == "个股")["asset_count"] == 1
 
     reordered = client.put(
         "/api/v1/tags/order",
@@ -251,11 +315,11 @@ def test_tag_groups_can_be_reordered_pinned_and_summarized(client):
     assert [tag["name"] for tag in reordered.json()] == list(reversed(names))
 
     pinned = client.put(
-        "/api/v1/tags/%E9%93%B6%E8%A1%8C/pin",
+        "/api/v1/tags/%E4%B8%AA%E8%82%A1/pin",
         json={"is_pinned": True},
     )
     assert pinned.status_code == 200
-    assert pinned.json()[0]["name"] == "银行"
+    assert pinned.json()[0]["name"] == "个股"
     assert pinned.json()[0]["is_pinned"] is True
 
     with client.app.state.session_factory() as session:
@@ -266,7 +330,7 @@ def test_tag_groups_can_be_reordered_pinned_and_summarized(client):
             .where(
                 asset_tags.c.asset_symbol
                 == asset_identity(AssetCategory.STOCK, "600000.SH"),
-                asset_tags.c.tag_name == "银行",
+                asset_tags.c.tag_name == "个股",
             )
             .values(favorite_since=date(2026, 7, 1), favorite_price=100)
         )
@@ -274,11 +338,11 @@ def test_tag_groups_can_be_reordered_pinned_and_summarized(client):
 
     updated_tags = client.put(
         "/api/v1/assets/600000.SH/tags",
-        json={"tags": ["银行", "红利"]},
+        json={"tags": ["个股", "红利"]},
     )
     assert updated_tags.status_code == 200
 
-    rows = client.get("/api/v1/tags/%E9%93%B6%E8%A1%8C/assets").json()
+    rows = client.get("/api/v1/tags/%E4%B8%AA%E8%82%A1/assets").json()
     assert len(rows) == 1
     assert rows[0]["symbol"] == "600000.SH"
     assert rows[0]["favorite_since"] == "2026-07-01"
@@ -292,6 +356,22 @@ def test_tag_groups_can_be_reordered_pinned_and_summarized(client):
     assert later_group[0]["favorite_since"] != rows[0]["favorite_since"]
     assert later_group[0]["favorite_price"] == "110.000000"
     assert Decimal(later_group[0]["favorite_return_percent"]) == Decimal("0")
+
+
+def test_can_create_empty_tag_group(client):
+    created = client.post("/api/v1/tags", json={"name": "长期观察"})
+
+    assert created.status_code == 201
+    assert created.json()["name"] == "长期观察"
+    assert created.json()["asset_count"] == 0
+    groups = client.get("/api/v1/tags").json()
+    assert any(group["name"] == "长期观察" and group["asset_count"] == 0 for group in groups)
+
+    deleted = client.delete("/api/v1/tags/长期观察")
+    assert deleted.status_code == 204
+    assert all(group["name"] != "长期观察" for group in client.get("/api/v1/tags").json())
+    protected = client.delete("/api/v1/tags/个股")
+    assert protected.status_code == 422
 
 
 def test_web_market_group_and_asset_pages(client):
@@ -316,6 +396,21 @@ def test_web_market_group_and_asset_pages(client):
     assert "行情首页" in detail.text
     assert "返回标签分组" not in detail.text
     assert "管理标的标签" in detail.text
+    assert 'id="favorite-dialog"' in detail.text
+    assert "该标的目前位于以下分组" in detail.text
+    assert 'id="show-tag-add"' in detail.text
+    assert "加入日期" in detail.text
+    assert "选择已有分组或输入新名称" in detail.text
+    assert '{method: "DELETE"}' in detail.text
+    assert "多个标签用逗号分隔" not in detail.text
+    assert 'id="add-tag-asset"' in page.text
+    assert 'id="create-tag"' in page.text
+    assert 'id="tag-create-dialog"' in page.text
+    assert 'method: "POST"' in page.text
+    assert 'id="tag-asset-search"' in page.text
+    assert 'data-remove-category=' in page.text
+    assert 'method: "DELETE"' in page.text
+    assert "系统分类分组，仅搜索" in page.text
     assert "成交量（股/份）" in detail.text
     assert 'row.volume == null ? "--"' in detail.text
     for label in (

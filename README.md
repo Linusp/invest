@@ -112,9 +112,13 @@ Web 页面所需的 ECharts 和 Lucide 已随镜像提供并启用 gzip，不依
 | `GET` | `/api/v1/assets/search?q=...` | 从本地索引模糊搜索标的，可按 `category` 分类 |
 | `POST` | `/api/v1/assets` | 手动注册标的 |
 | `GET` | `/api/v1/assets/{category}/{symbol}` | 查询分类明确的标的 |
-| `PUT` | `/api/v1/assets/{category}/{symbol}/tags` | 覆盖标的的多标签列表 |
+| `GET` | `/api/v1/assets/{category}/{symbol}/tags` | 查询各分组及其加入日期、加入价格 |
+| `POST` | `/api/v1/assets/{category}/{symbol}/tags` | 加入一个已有或新建分组 |
+| `DELETE` | `/api/v1/assets/{category}/{symbol}/tags/{name}` | 从一个分组移除 |
+| `PUT` | `/api/v1/assets/{category}/{symbol}/tags` | 兼容接口：批量覆盖分组列表 |
 | `PUT` | `/api/v1/assets/{category}/{symbol}/favorite` | 加入或移出自选（保留资产与行情数据） |
 | `GET` | `/api/v1/assets/{category}/{symbol}/history` | 查询历史行情 |
+| `POST` | `/api/v1/tags` | 创建空的自定义分组 |
 | `GET` | `/api/v1/exchange-rates/{currency}` | 查询指定日期前最近汇率 |
 | `POST` | `/api/v1/strategies` | 创建策略 |
 | `GET` | `/api/v1/strategies/{id}` | 查询策略详情 |
@@ -135,6 +139,10 @@ Web 页面所需的 ECharts 和 Lucide 已随镜像提供并启用 gzip，不依
 交易都会保存这个分类明确的身份，因此不同分类即使使用完全相同的 symbol 也
 不会覆盖。交易及期初持仓请求可传 `asset_category`；旧请求在 symbol 全局唯一
 时继续兼容，出现重码时必须补充该字段。
+
+首次加入自选会自动归入“个股”“ETF”或“指数”类型分组。每个分组成员关系
+独立记录加入日期和加入价格；从单个分组移除不会影响其他分组，移出自选则会
+清除该标的的全部分组关系，但保留标的和历史行情。
 
 每笔买卖交易都会返回 `position_id`，入金和出金的该字段为空。同一标的只在某个
 交易日结束后持仓为零时结束当前持仓周期；因此同日先清仓再买回仍使用原
