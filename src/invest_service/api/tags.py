@@ -8,6 +8,7 @@ from ..dependencies import get_provider
 from ..providers import MarketDataProvider
 from ..schemas import (
     AssetMarketSummary,
+    TagCreate,
     TagGroupRead,
     TagOrderUpdate,
     TagPinUpdate,
@@ -23,6 +24,16 @@ Provider = Annotated[MarketDataProvider, Depends(get_provider)]
 @router.get("", response_model=list[TagGroupRead])
 def list_tags(db: DB, provider: Provider):
     return MarketService(db, provider).list_tags()
+
+
+@router.post("", response_model=TagGroupRead, status_code=201)
+def create_tag(data: TagCreate, db: DB, provider: Provider):
+    return MarketService(db, provider).create_tag(data)
+
+
+@router.delete("/{name}", status_code=204)
+def delete_tag(name: str, db: DB, provider: Provider):
+    MarketService(db, provider).delete_tag(name)
 
 
 @router.put("/order", response_model=list[TagGroupRead])

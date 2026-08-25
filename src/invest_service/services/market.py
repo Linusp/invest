@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import Select, func, select, update
+from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.orm import Session
 
 from ..models import (
@@ -20,8 +20,10 @@ from ..providers.base import infer_currency, infer_default_tags
 from ..schemas import (
     AssetCreate,
     AssetMarketSummary,
+    AssetTagMembershipRead,
     BulkSyncResult,
     MarketSyncResult,
+    TagCreate,
     TagGroupRead,
 )
 from .search_index import AssetSearchIndexService, SearchIndexSyncResult
@@ -33,6 +35,16 @@ class AssetNotFound(LookupError):
 
 class TagNotFound(LookupError):
     pass
+
+
+FAVORITE_CATEGORY_TAGS = {
+    AssetCategory.STOCK: "个股",
+    AssetCategory.ETF: "ETF",
+    AssetCategory.INDEX: "指数",
+}
+CATEGORY_TAGS_BY_NAME = {
+    name: category for category, name in FAVORITE_CATEGORY_TAGS.items()
+}
 
 
 class MarketService:
@@ -139,6 +151,78 @@ class MarketService:
         self.session.commit()
         return asset
 
+    def tag_memberships(
+        self,
+        symbol: str,
+        category: AssetCategory | None = None,
+    ) -> list[AssetTagMembershipRead]:
+        asset = self.get_asset(symbol, category)
+        if not asset.is_favorite:
+            return []
+        rows = self.session.execute(
+            select(
+                asset_tags.c.tag_name,
+                asset_tags.c.favorite_since,
+                asset_tags.c.favorite_price,
+            )
+            .where(asset_tags.c.asset_symbol == asset.key)
+            .order_by(asset_tags.c.favorite_since, asset_tags.c.tag_name)
+        ).all()
+        return [
+            AssetTagMembershipRead(
+                name=name,
+                favorite_since=favorite_since,
+                favorite_price=favorite_price,
+            )
+            for name, favorite_since, favorite_price in rows
+        ]
+
+    def add_tag(
+        self,
+        symbol: str,
+        name: str,
+        category: AssetCategory | None = None,
+    ) -> Asset:
+        asset = self.get_asset(symbol, category)
+        if not asset.is_favorite:
+            self._set_favorite(asset, True)
+        normalized = " ".join(name.split())
+        self._validate_tag_for_asset(asset, normalized)
+        tag = self.session.get(Tag, normalized)
+        if tag is None:
+            next_position = self.session.scalar(
+                select(func.coalesce(func.max(Tag.position), -1) + 1)
+            )
+            tag = Tag(name=normalized, position=next_position)
+            self.session.add(tag)
+        if all(item.name != normalized for item in asset.tags):
+            if len(asset.tags) >= 20:
+                raise ValueError("an asset must not have more than 20 tags")
+            asset.tags.append(tag)
+            self.session.flush()
+            self._capture_tag_prices(asset, date.today())
+        self.session.commit()
+        return asset
+
+    def remove_tag(
+        self,
+        symbol: str,
+        name: str,
+        category: AssetCategory | None = None,
+    ) -> Asset:
+        asset = self.get_asset(symbol, category)
+        result = self.session.execute(
+            delete(asset_tags).where(
+                asset_tags.c.asset_symbol == asset.key,
+                asset_tags.c.tag_name == name,
+            )
+        )
+        if not result.rowcount:
+            raise TagNotFound(f"Asset {asset.symbol} is not in tag {name}")
+        self.session.commit()
+        self.session.expire(asset, ["tags"])
+        return asset
+
     def set_favorite(
         self,
         symbol: str,
@@ -153,6 +237,7 @@ class MarketService:
     def _set_favorite(self, asset: Asset, is_favorite: bool) -> None:
         was_favorite = asset.is_favorite
         if not is_favorite:
+            self._set_tags(asset, ())
             asset.is_favorite = False
             asset.favorite_since = None
             asset.favorite_price = None
@@ -163,6 +248,7 @@ class MarketService:
         asset.is_favorite = True
         self._capture_favorite_price(asset)
         if not was_favorite:
+            self._set_tags(asset, (FAVORITE_CATEGORY_TAGS[asset.category],))
             self.session.flush()
             self._reset_tag_snapshots(asset)
 
@@ -305,19 +391,70 @@ class MarketService:
         self.session.commit()
 
     def list_tags(self) -> list[TagGroupRead]:
+        self._ensure_category_tags()
         tags = list(
             self.session.scalars(select(Tag).order_by(Tag.is_pinned.desc(), Tag.position, Tag.name))
         )
-        return [
-            TagGroupRead(
-                name=tag.name,
-                position=tag.position,
-                is_pinned=tag.is_pinned,
-                asset_count=sum(asset.is_favorite for asset in tag.assets),
+        groups = []
+        for tag in tags:
+            expected_category = CATEGORY_TAGS_BY_NAME.get(tag.name)
+            members = [
+                asset
+                for asset in tag.assets
+                if asset.is_favorite
+                and (expected_category is None or asset.category == expected_category)
+            ]
+            if members or tag.is_visible or expected_category is not None:
+                groups.append(
+                    TagGroupRead(
+                        name=tag.name,
+                        position=tag.position,
+                        is_pinned=tag.is_pinned,
+                        asset_count=len(members),
+                    )
+                )
+        return groups
+
+    def create_tag(self, data: TagCreate) -> TagGroupRead:
+        tag = self.session.get(Tag, data.name)
+        if tag is None:
+            next_position = self.session.scalar(
+                select(func.coalesce(func.max(Tag.position), -1) + 1)
             )
-            for tag in tags
-            if any(asset.is_favorite for asset in tag.assets)
-        ]
+            tag = Tag(name=data.name, position=next_position, is_visible=True)
+            self.session.add(tag)
+        else:
+            tag.is_visible = True
+        self.session.commit()
+        return next(group for group in self.list_tags() if group.name == tag.name)
+
+    def delete_tag(self, name: str) -> None:
+        normalized = " ".join(name.split())
+        if normalized in CATEGORY_TAGS_BY_NAME:
+            raise ValueError("系统分类分组不可删除")
+        tag = self.session.get(Tag, normalized)
+        if tag is None:
+            raise TagNotFound(f"Tag {normalized} not found")
+        self.session.execute(delete(asset_tags).where(asset_tags.c.tag_name == normalized))
+        self.session.delete(tag)
+        self.session.commit()
+
+    def _ensure_category_tags(self) -> None:
+        existing = set(self.session.scalars(select(Tag.name)))
+        next_position = self.session.scalar(
+            select(func.coalesce(func.max(Tag.position), -1) + 1)
+        )
+        changed = False
+        for name in FAVORITE_CATEGORY_TAGS.values():
+            if name in existing:
+                continue
+            self.session.add(
+                Tag(name=name, position=next_position, is_visible=True)
+            )
+            next_position += 1
+            changed = True
+        if changed:
+            self.session.commit()
 
     def reorder_tags(self, names: list[str]) -> list[TagGroupRead]:
         tags = list(self.session.scalars(select(Tag)))
@@ -355,7 +492,7 @@ class MarketService:
         tag = self.session.get(Tag, name)
         if tag is None:
             raise TagNotFound(f"Tag {name} was not found")
-        rows = self.session.execute(
+        stmt = (
             select(
                 Asset,
                 asset_tags.c.favorite_since,
@@ -367,7 +504,11 @@ class MarketService:
                 Asset.is_favorite.is_(True),
             )
             .order_by(Asset.name, Asset.symbol)
-        ).all()
+        )
+        expected_category = CATEGORY_TAGS_BY_NAME.get(name)
+        if expected_category is not None:
+            stmt = stmt.where(Asset.category == expected_category)
+        rows = self.session.execute(stmt).all()
         return [
             (asset, favorite_since, favorite_price)
             for asset, favorite_since, favorite_price in rows
@@ -422,6 +563,7 @@ class MarketService:
                 continue
             if len(name) > 64:
                 raise ValueError("tag must not exceed 64 characters")
+            self._validate_tag_for_asset(asset, name)
             tag = self.session.get(Tag, name)
             if tag is None:
                 next_position = self.session.scalar(
@@ -429,9 +571,19 @@ class MarketService:
                 )
                 tag = Tag(name=name, position=next_position)
                 self.session.add(tag)
+            if asset.is_favorite:
+                tag.is_visible = True
             tags.append(tag)
             seen.add(key)
         asset.tags = sorted(tags, key=lambda item: item.name.casefold())
+
+    @staticmethod
+    def _validate_tag_for_asset(asset: Asset, name: str) -> None:
+        expected_category = CATEGORY_TAGS_BY_NAME.get(name)
+        if expected_category is not None and asset.category != expected_category:
+            raise ValueError(
+                f"Tag {name} only accepts {expected_category.value} assets"
+            )
 
     def search_assets(
         self,

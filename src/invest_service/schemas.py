@@ -28,6 +28,15 @@ class TagRead(APIModel):
     name: str
 
 
+class TagCreate(APIModel):
+    name: str = Field(min_length=1, max_length=64)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, name: str) -> str:
+        return normalize_tag_names([name])[0]
+
+
 class AssetTagsUpdate(APIModel):
     tags: list[str] = Field(default_factory=list, max_length=20)
 
@@ -35,6 +44,21 @@ class AssetTagsUpdate(APIModel):
     @classmethod
     def validate_tags(cls, tags: list[str]) -> list[str]:
         return normalize_tag_names(tags)
+
+
+class AssetTagCreate(APIModel):
+    name: str = Field(min_length=1, max_length=64)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, name: str) -> str:
+        return normalize_tag_names([name])[0]
+
+
+class AssetTagMembershipRead(APIModel):
+    name: str
+    favorite_since: date | None
+    favorite_price: Decimal | None
 
 
 class AssetFavoriteUpdate(APIModel):

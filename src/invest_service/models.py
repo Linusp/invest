@@ -92,6 +92,12 @@ class Tag(Base):
         default=False,
         server_default=false(),
     )
+    is_visible: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=false(),
+    )
     assets: Mapped[list["Asset"]] = relationship(
         secondary=asset_tags,
         back_populates="tags",

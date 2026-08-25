@@ -13,6 +13,8 @@ from ..schemas import (
     AssetCreate,
     AssetFavoriteUpdate,
     AssetRead,
+    AssetTagCreate,
+    AssetTagMembershipRead,
     AssetTagsUpdate,
     MarketBarRead,
 )
@@ -73,6 +75,48 @@ def update_asset_tags(
     category: AssetCategory | None = None,
 ):
     return MarketService(db, provider).update_tags(symbol, data.tags, category)
+
+
+@router.get(
+    "/{category}/{symbol}/tags",
+    response_model=list[AssetTagMembershipRead],
+)
+@router.get(
+    "/{symbol}/tags",
+    response_model=list[AssetTagMembershipRead],
+    deprecated=True,
+)
+def list_asset_tags(
+    symbol: str,
+    db: DB,
+    provider: Provider,
+    category: AssetCategory | None = None,
+):
+    return MarketService(db, provider).tag_memberships(symbol, category)
+
+
+@router.post("/{category}/{symbol}/tags", response_model=AssetRead)
+@router.post("/{symbol}/tags", response_model=AssetRead, deprecated=True)
+def add_asset_tag(
+    symbol: str,
+    data: AssetTagCreate,
+    db: DB,
+    provider: Provider,
+    category: AssetCategory | None = None,
+):
+    return MarketService(db, provider).add_tag(symbol, data.name, category)
+
+
+@router.delete("/{category}/{symbol}/tags/{name}", response_model=AssetRead)
+@router.delete("/{symbol}/tags/{name}", response_model=AssetRead, deprecated=True)
+def remove_asset_tag(
+    symbol: str,
+    name: str,
+    db: DB,
+    provider: Provider,
+    category: AssetCategory | None = None,
+):
+    return MarketService(db, provider).remove_tag(symbol, name, category)
 
 
 @router.put("/{category}/{symbol}/favorite", response_model=AssetRead)

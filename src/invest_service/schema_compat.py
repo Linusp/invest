@@ -95,6 +95,21 @@ def prepare_legacy_schema(engine: Engine) -> None:
                         "NOT NULL DEFAULT FALSE"
                     )
                 )
+            if "is_visible" not in tag_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE tags ADD COLUMN is_visible BOOLEAN "
+                        "NOT NULL DEFAULT FALSE"
+                    )
+                )
+                if "asset_tags" in table_names:
+                    connection.execute(
+                        text(
+                            "UPDATE tags SET is_visible = TRUE WHERE EXISTS ("
+                            "SELECT 1 FROM asset_tags "
+                            "WHERE asset_tags.tag_name = tags.name)"
+                        )
+                    )
     if "asset_tags" in table_names:
         asset_tag_columns = {
             item["name"] for item in inspector.get_columns("asset_tags")
