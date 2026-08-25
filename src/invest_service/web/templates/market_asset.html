@@ -63,7 +63,7 @@
             <thead><tr>
                 <th>日期</th><th class="text-right">开盘</th><th class="text-right">最高</th>
                 <th class="text-right">最低</th><th class="text-right">收盘</th>
-                <th class="text-right">涨跌幅</th><th class="text-right">成交量</th>
+                <th class="text-right">涨跌幅</th><th class="text-right">成交量（股/份）</th>
             </tr></thead>
             <tbody id="history-body"></tbody>
         </table>
@@ -285,7 +285,7 @@
                 <td class="text-right ${Number(row.change_percent || 0) >= 0 ? "positive" : "negative"}">
                     ${Number(row.change_percent || 0) >= 0 ? "+" : ""}${number(row.change_percent)}%
                 </td>
-                <td class="text-right">${number(row.volume, 0)}</td>
+                <td class="text-right">${row.volume == null ? "--" : number(row.volume, 0)}</td>
             </tr>`).join("");
     }
 

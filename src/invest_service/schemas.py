@@ -118,8 +118,8 @@ class MarketBarRead(APIModel):
     previous_close: Decimal | None
     change: Decimal | None
     change_percent: Decimal | None
-    volume: Decimal | None
-    amount: Decimal | None
+    volume: Decimal | None = Field(description="成交量，统一为股/基金份额")
+    amount: Decimal | None = Field(description="成交额，统一为元")
     source: str
 
 

@@ -2,6 +2,7 @@ import json
 import logging
 import subprocess
 import sys
+from dataclasses import replace
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from time import monotonic
@@ -22,6 +23,11 @@ def _decimal(value: Any) -> Decimal | None:
     except (InvalidOperation, ValueError):
         return None
     return result if result.is_finite() else None
+
+
+def _positive_decimal(value: Any) -> Decimal | None:
+    result = _decimal(value)
+    return result if result is not None and result > 0 else None
 
 
 def _date(value: Any) -> date | None:
@@ -185,6 +191,19 @@ class AkshareFallbackProvider(MarketDataProvider):
                     errors.append(f"{source_name} returned no data")
                     continue
                 bars = self._bars(frame, start_date, end_date)
+                if function_name == "stock_zh_index_daily_tx":
+                    bars = [
+                        replace(
+                            bar,
+                            volume=(
+                                bar.amount * 100
+                                if bar.amount is not None and bar.amount > 0
+                                else None
+                            ),
+                            amount=None,
+                        )
+                        for bar in bars
+                    ]
                 if bars:
                     return bars
                 errors.append(f"{source_name} returned no rows in the requested range")
@@ -434,7 +453,9 @@ class AkshareFallbackProvider(MarketDataProvider):
                         previous_close=row_previous_close,
                         change=change,
                         change_percent=change_percent,
-                        volume=_decimal(row.get("volume", row.get("成交量"))),
+                        volume=_positive_decimal(
+                            row.get("volume", row.get("成交量"))
+                        ),
                         amount=_decimal(row.get("amount", row.get("成交额"))),
                         source="akshare",
                     )

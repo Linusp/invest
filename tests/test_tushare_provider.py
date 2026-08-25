@@ -148,6 +148,7 @@ def test_history_uses_category_api_and_normalizes_rows(category, expected_api):
     }
     assert [bar.trade_date for bar in bars] == [date(2026, 7, 9), date(2026, 7, 10)]
     assert bars[-1].close == Decimal("11")
+    assert bars[-1].volume == Decimal("10000")
     assert bars[-1].amount == Decimal("123456.000")
 
 

@@ -316,6 +316,8 @@ def test_web_market_group_and_asset_pages(client):
     assert "行情首页" in detail.text
     assert "返回标签分组" not in detail.text
     assert "管理标的标签" in detail.text
+    assert "成交量（股/份）" in detail.text
+    assert 'row.volume == null ? "--"' in detail.text
     for label in (
         "本周",
         "本月",

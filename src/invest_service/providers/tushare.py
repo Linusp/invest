@@ -353,6 +353,7 @@ class TushareProvider(MarketDataProvider):
             if close is None or len(trade_date) != 8:
                 continue
             amount = _decimal(row.get("amount"))
+            volume = _decimal(row.get("vol"))
             bars.append(
                 ProviderBar(
                     trade_date=date(
@@ -367,7 +368,7 @@ class TushareProvider(MarketDataProvider):
                     previous_close=_decimal(row.get("pre_close")),
                     change=_decimal(row.get("change")),
                     change_percent=_decimal(row.get("pct_chg")),
-                    volume=_decimal(row.get("vol")),
+                    volume=volume * 100 if volume is not None and volume > 0 else None,
                     amount=amount * 1000 if amount is not None else None,
                     source="tushare",
                 )

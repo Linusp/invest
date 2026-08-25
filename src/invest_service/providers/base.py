@@ -52,6 +52,8 @@ class ProviderAsset:
 
 @dataclass(frozen=True)
 class ProviderBar:
+    """Normalized daily bar; volume is shares/units and amount is currency units."""
+
     trade_date: date
     open: Decimal | None
     high: Decimal | None

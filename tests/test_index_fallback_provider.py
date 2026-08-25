@@ -104,7 +104,7 @@ def test_real_akshare_call_is_isolated_with_date_range_and_timeout(monkeypatch):
         return subprocess.CompletedProcess(
             command,
             0,
-            stdout='[{"date":"2026-07-10","close":4020}]',
+            stdout='[{"date":"2026-07-10","close":4020,"amount":200}]',
             stderr="",
         )
 
@@ -125,6 +125,8 @@ def test_real_akshare_call_is_isolated_with_date_range_and_timeout(monkeypatch):
         },
     }
     assert bars[0].trade_date == date(2026, 7, 10)
+    assert bars[0].volume == Decimal("20000")
+    assert bars[0].amount is None
 
 
 class FakeStockAkshare:

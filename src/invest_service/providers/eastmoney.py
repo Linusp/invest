@@ -24,6 +24,15 @@ def _decimal(value: Any) -> Decimal | None:
         return None
 
 
+def _volume_units(value: Any, asset: ProviderAsset) -> Decimal | None:
+    """Normalize mainland daily volume from lots to shares/fund units."""
+    volume = _decimal(value)
+    if volume is None or volume <= 0:
+        return None
+    suffix = asset.symbol.strip().upper().rsplit(".", 1)[-1]
+    return volume * 100 if suffix in {"SH", "SZ", "BJ"} else volume
+
+
 class EastMoneyProvider(MarketDataProvider):
     name = "eastmoney"
     SEARCH_URL = "https://searchapi.eastmoney.com/api/suggest/get"
@@ -167,7 +176,7 @@ class EastMoneyProvider(MarketDataProvider):
                     close=close,
                     high=_decimal(values[3]),
                     low=_decimal(values[4]),
-                    volume=_decimal(values[5]),
+                    volume=_volume_units(values[5], asset),
                     amount=_decimal(values[6]),
                     change_percent=_decimal(values[8]),
                     change=change,
