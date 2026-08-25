@@ -103,6 +103,154 @@ invest-mcp
 .venv/bin/python -c 'from invest_service.mcp_server import run_stdio; run_stdio()'
 ```
 
+## 各 coding agent 的接入示例
+
+以下示例都假定服务已启动。远程 HTTP 示例使用 Docker 地址 `http://127.0.0.1:8001/mcp/`；如果 agent 与服务不在同一台机器，请替换为可访问的 HTTPS 地址。仅在 agent 与 Invest 同机时使用 stdio。
+
+### Claude Code
+
+Claude Code 支持命令行添加 HTTP 或 stdio MCP。HTTP：
+
+```bash
+claude mcp add --transport http invest http://127.0.0.1:8001/mcp/
+claude mcp list
+```
+
+stdio：
+
+```bash
+claude mcp add --transport stdio invest -- \
+  /absolute/path/to/invest/.venv/bin/invest-mcp
+claude mcp list
+```
+
+默认写入用户级配置；如果只想当前项目可用，加 `--scope project`。也可以在项目根目录的 `.mcp.json` 中写入：
+
+```json
+{
+  "mcpServers": {
+    "invest": {
+      "type": "http",
+      "url": "http://127.0.0.1:8001/mcp/"
+    }
+  }
+}
+```
+
+进入 Claude Code 后运行 `/mcp` 查看连接状态和工具列表。官方说明见 [Claude Code MCP 文档](https://code.claude.com/docs/en/mcp)。
+
+### OpenCode
+
+在项目根目录创建或编辑 `opencode.json` / `opencode.jsonc`，使用 V2 配置格式 `mcp.servers`。HTTP：
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "invest": {
+        "type": "remote",
+        "url": "http://127.0.0.1:8001/mcp/",
+        "oauth": false
+      }
+    }
+  }
+}
+```
+
+stdio：
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "invest": {
+        "type": "local",
+        "command": ["/absolute/path/to/invest/.venv/bin/invest-mcp"]
+      }
+    }
+  }
+}
+```
+
+OpenCode 会自动连接未设置 `disabled: true` 的 server。运行 `opencode` 后，可在 MCP/工具列表中确认 `invest` 已加载。配置格式以 [OpenCode MCP 文档](https://opencode.ai/docs/mcp-servers/) 为准。
+
+### Codex CLI
+
+Codex CLI 使用 TOML，配置文件为 `~/.codex/config.toml`。HTTP：
+
+```toml
+[mcp_servers.invest]
+url = "http://127.0.0.1:8001/mcp/"
+enabled = true
+```
+
+stdio：
+
+```toml
+[mcp_servers.invest]
+command = "/absolute/path/to/invest/.venv/bin/invest-mcp"
+args = []
+enabled = true
+
+[mcp_servers.invest.env]
+INVEST_DATABASE_URL = "sqlite:///./invest.db"
+```
+
+也可以使用 CLI 管理 stdio server：
+
+```bash
+codex mcp add invest -- /absolute/path/to/invest/.venv/bin/invest-mcp
+codex mcp list
+```
+
+重启 Codex CLI 或重新打开会话后，使用 `/mcp`（若当前版本提供该命令）或让 agent 调用 `search_assets` 验证。Codex 的配置键是 `mcp_servers`，不是其他客户端常见的 `mcpServers`；参考 [Codex MCP 配置](https://www.mintlify.com/openai/codex/configuration/mcp-servers)。
+
+### pi coding agent
+
+Pi 本身通过 MCP adapter 接入 MCP。推荐安装 `pi-mcp-adapter`，它支持标准 `.mcp.json`，并可通过 `/mcp setup` 导入其他 agent 的配置：
+
+```bash
+pi install npm:pi-mcp-adapter
+```
+
+在项目根目录创建 `.mcp.json`：
+
+```json
+{
+  "mcpServers": {
+    "invest": {
+      "type": "http",
+      "url": "http://127.0.0.1:8001/mcp/"
+    }
+  }
+}
+```
+
+stdio 配置把 server 改为：
+
+```json
+{
+  "mcpServers": {
+    "invest": {
+      "command": "/absolute/path/to/invest/.venv/bin/invest-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+启动 `pi` 后运行 `/mcp` 查看和连接 server；如果已有 Claude Code、Codex 等配置，可运行 `/mcp setup` 选择导入。Pi 的 adapter 默认按需连接，首次调用 Invest 工具时才启动连接。详情见 [pi-mcp-adapter](https://pi.dev/packages/pi-mcp-adapter)。
+
+### 通用排障
+
+1. 先确认 `curl http://127.0.0.1:8001/health` 返回 `{"status":"ok"}`。
+2. HTTP 连接失败时检查 agent 所在环境是否能访问该地址；容器内的 `127.0.0.1` 指向容器自身，不一定是宿主机。
+3. stdio 失败时使用绝对路径，并确认 `.venv`、数据库路径和 `.env` 对该进程可见。
+4. 修改配置后重启 agent；Pi 需要 `/reload`，Claude Code 可重新执行 `/mcp` 查看状态。
+5. 生产环境不要把数据库密码或 Tushare token 写入项目配置并提交到 Git。
+
 ## 测试与质量检查
 
 ```bash
