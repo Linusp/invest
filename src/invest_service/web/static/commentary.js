@@ -32,7 +32,7 @@
         let items = [];
         let page = 1;
         let pageSize = 20;
-        let sortValue = "date:desc";
+        let sortValue = null;
         root.innerHTML = `
             <section class="panel commentary-panel">
                 <div class="commentary-toolbar">
@@ -93,11 +93,11 @@
 
         function render() {
             const term = query.value.trim().toLowerCase();
-            const [sortField, direction] = sortValue.split(":");
+            const [sortField, direction] = sortValue?.split(":") || [null, null];
             const filtered = items.filter(item =>
                 (!filter.value || item.session === filter.value)
-                && (!term || `${item.title} ${item.summary || ""}`.toLowerCase().includes(term)))
-                .sort((left, right) => {
+                && (!term || `${item.title} ${item.summary || ""}`.toLowerCase().includes(term)));
+            if (sortField) filtered.sort((left, right) => {
                     const values = {date: "trading_date", session: "session", title: "title", summary: "summary", source: "source"};
                     const leftValue = left[values[sortField]] || "";
                     const rightValue = right[values[sortField]] || "";
@@ -173,8 +173,10 @@
         );
         filter.addEventListener("change", () => { page = 1; render(); });
         root.querySelectorAll("[data-commentary-sort]").forEach(button => button.addEventListener("click", () => {
-            const [field, direction] = sortValue.split(":");
-            sortValue = `${button.dataset.commentarySort}:${field === button.dataset.commentarySort && direction === "asc" ? "desc" : "asc"}`;
+            const [field, direction] = sortValue?.split(":") || [null, null];
+            sortValue = field !== button.dataset.commentarySort
+                ? `${button.dataset.commentarySort}:asc`
+                : direction === "asc" ? `${field}:desc` : null;
             page = 1;
             render();
         }));

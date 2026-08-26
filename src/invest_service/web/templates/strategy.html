@@ -304,7 +304,7 @@
 </dialog>
 {% endblock %}
 {% block scripts %}
-<script src="/static/commentary.js?v=20260826-4"></script>
+<script src="/static/commentary.js?v=20260826-5"></script>
 <script>
 (() => {
     const state = {
@@ -314,9 +314,9 @@
         snapshotSearchTimer: null, plans: [],
     };
     const listViews = {
-        positions: {page: 1, size: 20, sort: "asset:asc"},
-        trades: {page: 1, size: 20, sort: "date:desc"},
-        plans: {page: 1, size: 20, sort: "valid:desc"},
+        positions: {page: 1, size: 20, sort: null},
+        trades: {page: 1, size: 20, sort: null},
+        plans: {page: 1, size: 20, sort: null},
     };
     const $ = (id) => document.getElementById(id);
     const commentaryTimeline = window.CommentaryTimeline.mount({
@@ -335,6 +335,7 @@
         : String(left || "").localeCompare(String(right || ""), "zh-CN");
 
     function sortList(rows, spec, selectors) {
+        if (!spec) return [...rows];
         const [field, direction] = spec.split(":");
         const selector = selectors[field];
         return [...rows].sort((left, right) => compare(selector(left), selector(right)) * (direction === "desc" ? -1 : 1));
@@ -356,7 +357,7 @@
     }
 
     function updateSortHeaders(name) {
-        const [field, direction] = listViews[name].sort.split(":");
+        const [field, direction] = listViews[name].sort?.split(":") || [null, null];
         document.querySelectorAll(`[data-sort-table="${name}"]`).forEach(button => {
             const active = button.dataset.sortField === field;
             button.classList.toggle("active", active);
@@ -906,8 +907,10 @@
     bindListControls("plans", ["plans-query", "plans-action", "plans-status", "plans-page-size"], renderTradePlans);
     document.querySelectorAll("[data-sort-table]").forEach(button => button.addEventListener("click", () => {
         const view = listViews[button.dataset.sortTable];
-        const [field, direction] = view.sort.split(":");
-        view.sort = `${button.dataset.sortField}:${field === button.dataset.sortField && direction === "asc" ? "desc" : "asc"}`;
+        const [field, direction] = view.sort?.split(":") || [null, null];
+        view.sort = field !== button.dataset.sortField
+            ? `${button.dataset.sortField}:asc`
+            : direction === "asc" ? `${field}:desc` : null;
         view.page = 1;
         ({positions: renderPositions, trades: renderTrades, plans: renderTradePlans})[button.dataset.sortTable]();
     }));
