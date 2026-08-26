@@ -29,16 +29,23 @@
         const root = typeof container === "string" ? document.querySelector(container) : container;
         const id = `commentary-${++sequence}`;
         let subject = null;
+        let items = [];
+        let page = 1;
+        let pageSize = 20;
         root.innerHTML = `
             <section class="panel commentary-panel">
                 <div class="commentary-toolbar">
+                        <input class="input commentary-query" type="search" placeholder="筛选标题或摘要">
                         <select class="input commentary-session-filter" aria-label="按时段筛选">
                             <option value="">全部时段</option>
                             ${Object.entries(sessionLabels).map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}
                         </select>
+                        <select class="input commentary-sort" aria-label="排序"><option value="date:desc">日期 ↓</option><option value="date:asc">日期 ↑</option><option value="title:asc">标题 ↑</option><option value="title:desc">标题 ↓</option></select>
+                        <select class="input commentary-page-size" aria-label="每页条数"><option>10</option><option selected>20</option><option>50</option></select>
                         <button class="button primary commentary-add" type="button"><i data-lucide="message-square-plus"></i><span>添加</span></button>
                 </div>
                 <div class="table-wrap"><table class="data-table commentary-table"><thead><tr><th>日期</th><th>时段</th><th>标题</th><th>摘要</th><th>来源</th></tr></thead><tbody class="commentary-list"><tr><td colspan="5"><div class="empty-state compact">请选择分析对象</div></td></tr></tbody></table></div>
+                <div class="list-pager commentary-pager"></div>
             </section>
             <dialog id="${id}-dialog" class="dialog-wide">
                 <form>
@@ -68,6 +75,10 @@
         document.body.append(detailDialog);
         const form = dialog.querySelector("form");
         const filter = root.querySelector(".commentary-session-filter");
+        const query = root.querySelector(".commentary-query");
+        const sort = root.querySelector(".commentary-sort");
+        const size = root.querySelector(".commentary-page-size");
+        const pager = root.querySelector(".commentary-pager");
 
         async function load() {
             if (!subject) {
@@ -75,9 +86,27 @@
                 return;
             }
             const params = new URLSearchParams(subjectParams(subject));
-            if (filter.value) params.set("session", filter.value);
-            const items = await window.api(`/commentaries?${params}`);
-            list.innerHTML = items.length ? items.map((item, index) => `
+            params.set("limit", "1000");
+            items = await window.api(`/commentaries?${params}`);
+            page = 1;
+            render();
+        }
+
+        function render() {
+            const term = query.value.trim().toLowerCase();
+            const [sortField, direction] = sort.value.split(":");
+            const filtered = items.filter(item =>
+                (!filter.value || item.session === filter.value)
+                && (!term || `${item.title} ${item.summary || ""}`.toLowerCase().includes(term)))
+                .sort((left, right) => {
+                    const leftValue = sortField === "title" ? left.title : left.trading_date;
+                    const rightValue = sortField === "title" ? right.title : right.trading_date;
+                    return String(leftValue).localeCompare(String(rightValue), "zh-CN") * (direction === "desc" ? -1 : 1);
+                });
+            const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
+            page = Math.min(page, pages);
+            const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
+            list.innerHTML = visible.length ? visible.map((item, index) => `
                 <tr class="commentary-list-row" tabindex="0" role="button" data-commentary-index="${index}">
                     <td class="mono">${escapeHtml(item.trading_date)}</td>
                     <td><span class="badge">${escapeHtml(sessionLabels[item.session] || item.session)}</span></td>
@@ -87,7 +116,7 @@
                 </tr>`).join("") : '<tr><td colspan="5"><div class="empty-state compact">暂无点评</div></td></tr>';
             list.querySelectorAll("[data-commentary-index]").forEach(button => {
                 button.addEventListener("click", () => {
-                    const item = items[Number(button.dataset.commentaryIndex)];
+                    const item = visible[Number(button.dataset.commentaryIndex)];
                     detailDialog.innerHTML = `<div class="dialog-header"><h2>${escapeHtml(item.title)}</h2><button class="icon-button" type="button" aria-label="关闭"><i data-lucide="x"></i></button></div><div class="dialog-body"><div class="commentary-meta"><span class="badge">${escapeHtml(sessionLabels[item.session] || item.session)}</span><time>${escapeHtml(item.trading_date)}</time></div>${item.summary ? `<p class="commentary-summary">${escapeHtml(item.summary)}</p>` : ""}<div class="commentary-content">${item.content_html}</div></div>`;
                     detailDialog.querySelector("button").addEventListener("click", () => detailDialog.close());
                     detailDialog.showModal();
@@ -100,6 +129,11 @@
                     }
                 });
             });
+            pager.innerHTML = `<span>共 ${filtered.length} 条 · 第 ${page}/${pages} 页</span><div><button class="button" type="button" data-page="prev" ${page <= 1 ? "disabled" : ""}>上一页</button><button class="button" type="button" data-page="next" ${page >= pages ? "disabled" : ""}>下一页</button></div>`;
+            pager.querySelectorAll("[data-page]").forEach(button => button.addEventListener("click", () => {
+                page += button.dataset.page === "next" ? 1 : -1;
+                render();
+            }));
         }
 
         async function save(event) {
@@ -132,7 +166,9 @@
         root.querySelectorAll(".commentary-close").forEach(button =>
             button.addEventListener("click", () => dialog.close())
         );
-        filter.addEventListener("change", () => load().catch(error => window.showToast(error.message, "error")));
+        [filter, sort].forEach(control => control.addEventListener("change", () => { page = 1; render(); }));
+        query.addEventListener("input", () => { page = 1; render(); });
+        size.addEventListener("change", () => { pageSize = Number(size.value); page = 1; render(); });
         form.addEventListener("submit", save);
         window.lucide?.createIcons();
         return {
