@@ -138,7 +138,10 @@ svg { width: 18px; height: 18px; flex: none; }
 .commentary-meta, .commentary-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .commentary-summary { color: var(--muted); margin: 0 0 10px; }
 .commentary-content { line-height: 1.7; overflow-wrap: anywhere; }
-.commentary-content h1, .commentary-content h2, .commentary-content h3 { margin: 14px 0 8px; }
+.commentary-content h1, .commentary-content h2, .commentary-content h3 { margin: 14px 0 8px; line-height: 1.35; }
+.commentary-content h1 { font-size: 21px; }
+.commentary-content h2 { font-size: 18px; }
+.commentary-content h3 { font-size: 15px; }
 .commentary-content p, .commentary-content ul, .commentary-content ol, .commentary-content blockquote { margin: 8px 0; }
 .commentary-content blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--muted); }
 .commentary-metric { display: inline-grid; grid-template-columns: auto auto; gap: 8px; margin: 6px 12px 6px 0; padding: 8px 10px; background: var(--accent-soft); border-radius: 6px; }
