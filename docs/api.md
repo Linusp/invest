@@ -46,9 +46,13 @@
 
 `/information` 用于接收外部工具整理后的资讯，支持多市场对象、多标的关联和无关联资料。相同 URL 幂等更新，不在 Invest 内触发浏览器搜索或抓取。点评通过 `/commentaries/{commentary_id}/information` 查询和维护引用材料。完整工作流见[外部资讯接入](information.md)。
 
+## 交易计划
+
+`/trade-plans` 管理组合内的买卖计划。每条计划明确归属组合和 `category + symbol` 标的，规模至少填写数量、金额或仓位比例之一；条件支持 `and`/`or`，可配置连续满足交易日数。状态通过 `POST /trade-plans/{id}/status` 显式流转，触发只产生待确认状态，不会自动写入交易流水。组合页会展示计划列表。
+
 ## MCP 工具覆盖
 
-MCP 与上述业务接口保持同一套服务层逻辑，当前提供 53 个工具：
+MCP 与上述业务接口保持同一套服务层逻辑，当前提供 58 个工具：
 
 - 标的：`search_assets`、`list_assets`、`get_asset`、`register_asset`、`refresh_asset_market_data`、`get_market_history`、`set_asset_favorite`
 - 自选与分组：`list_asset_tags`、`update_asset_tags`、`add_asset_tag`、`remove_asset_tag`、`list_tags`、`create_tag`、`delete_tag`、`reorder_tags`、`pin_tag`、`list_tag_assets`
@@ -58,5 +62,6 @@ MCP 与上述业务接口保持同一套服务层逻辑，当前提供 53 个工
 - 市场对象：`create_market_scope`、`list_market_scopes`、`get_market_scope`、`update_market_scope`、`delete_market_scope`
 - 点评：`create_commentary`、`list_commentaries`、`get_commentary`、`revise_commentary`
 - 资讯：`submit_information`、`list_information`、`get_information`、`link_information_to_commentary`、`unlink_information_from_commentary`、`list_commentary_information`
+- 交易计划：`create_trade_plan`、`list_trade_plans`、`get_trade_plan`、`update_trade_plan`、`change_trade_plan_status`
 
 MCP 不暴露 Celery 调度、后台同步等运维接口；这些任务由 Beat/Worker 按配置自动执行。
