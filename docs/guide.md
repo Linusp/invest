@@ -70,7 +70,15 @@ INVEST_MCP_ALLOWED_ORIGINS=["https://chat.example.com"]
 
 配置修改后重启 app。MCP 使用的 Host/Origin 校验不是用户认证；生产环境应在反向代理或网关层增加身份认证，并使用 HTTPS。
 
-最小验证方式是先打开 `http://127.0.0.1:8001/health`，再在 MCP 客户端中连接 endpoint，确认能看到 `search_assets`、`get_market_history`、`list_strategies` 等工具。
+最小验证方式是先打开 `http://127.0.0.1:8001/health`，再在 MCP 客户端中连接 endpoint，确认能看到 `search_assets`、`get_market_history`、`list_portfolios`、`list_commentaries` 和 `list_trade_plans` 等工具。
+
+让 Agent 读取一个组合的完整工作区时，建议按以下顺序调用：
+
+1. `get_portfolio(portfolio_id)`：组合属性、核心指标、持仓和交易；
+2. `list_commentaries(subject_type="portfolio", portfolio_id=..., limit=..., offset=...)`：组合点评；
+3. `list_trade_plans(portfolio_id=..., action=..., status=..., limit=..., offset=...)`：交易计划。
+
+点评默认以 Markdown 返回，适合直接进入 Agent 上下文；需要结构化 blocks 时传 `output_format="structured"`。交易计划返回 `asset_name + asset_symbol + asset_category`，创建或更新计划不会自动产生交易。
 
 ### stdio
 
