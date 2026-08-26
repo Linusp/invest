@@ -44,9 +44,11 @@
 
 点评正文可用 `structured`、`markdown` 或 `html` 提交。写入后统一保存为 version 1 的结构化 blocks；REST 同时返回安全渲染的 HTML 和 Markdown，MCP 默认返回 Markdown，可用 `output_format=structured` 获取 blocks。
 
+`/information` 用于接收外部工具整理后的资讯，支持多市场对象、多标的关联和无关联资料。相同 URL 幂等更新，不在 Invest 内触发浏览器搜索或抓取。点评通过 `/commentaries/{commentary_id}/information` 查询和维护引用材料。完整工作流见[外部资讯接入](information.md)。
+
 ## MCP 工具覆盖
 
-MCP 与上述业务接口保持同一套服务层逻辑，当前提供 47 个工具：
+MCP 与上述业务接口保持同一套服务层逻辑，当前提供 53 个工具：
 
 - 标的：`search_assets`、`list_assets`、`get_asset`、`register_asset`、`refresh_asset_market_data`、`get_market_history`、`set_asset_favorite`
 - 自选与分组：`list_asset_tags`、`update_asset_tags`、`add_asset_tag`、`remove_asset_tag`、`list_tags`、`create_tag`、`delete_tag`、`reorder_tags`、`pin_tag`、`list_tag_assets`
@@ -55,5 +57,6 @@ MCP 与上述业务接口保持同一套服务层逻辑，当前提供 47 个工
 - 组合兼容别名：`create_strategy`、`list_strategies`、`get_strategy`、`update_strategy`、`set_strategy_opening_snapshot`、`get_strategy_opening_snapshot`、`delete_strategy_opening_snapshot`、`get_strategy_trades`、`get_strategy_positions`、`add_strategy_trade`
 - 市场对象：`create_market_scope`、`list_market_scopes`、`get_market_scope`、`update_market_scope`、`delete_market_scope`
 - 点评：`create_commentary`、`list_commentaries`、`get_commentary`、`revise_commentary`
+- 资讯：`submit_information`、`list_information`、`get_information`、`link_information_to_commentary`、`unlink_information_from_commentary`、`list_commentary_information`
 
 MCP 不暴露 Celery 调度、后台同步等运维接口；这些任务由 Beat/Worker 按配置自动执行。

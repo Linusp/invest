@@ -31,12 +31,14 @@ make test
 - `/market/{category}/{symbol}`：查看单个标的行情、历史数据和日期快捷范围。
 - `/strategy`：管理组合属性、交易、持仓和盈亏。
 - `/analysis`：管理市场、行业、主题和商品层级，并查看市场点评。
+- `/information`：提交、筛选和阅读外部资讯。
 
 ## 文档
 
 - [开发与部署指南](docs/guide.md)
 - [REST API 参考](docs/api.md)
 - [行情源、搜索索引与定时任务](docs/market-data.md)
+- [OpenCLI / Agent 外部资讯接入](docs/information.md)
 - [组合、点评与交易计划需求文档（已 Review）](docs/portfolio-commentary-trade-plan-prd.md)
 
 ## 常用命令
