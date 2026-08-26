@@ -36,14 +36,24 @@
 
 首次加入自选会自动进入“个股”“ETF”或“指数”系统分组。每个分组分别保存加入日期和加入价格；从一个分组移除不会影响其他分组，移出自选会清除全部分组关系但保留标的和历史行情。
 
+## 市场对象与点评
+
+`/market-scopes` 提供市场对象的创建、列表、详情、修改和删除接口。`scope_type` 支持 `market`、`sector`、`theme` 和 `commodity`，通过 `parent_code` 组织可扩展层级；有下级或已被点评引用的对象不能删除。
+
+`/commentaries` 提供点评创建、详情和筛选，支持市场对象、组合和标的三类归属，可按交易日期、盘前/盘中/盘后/复盘时段、来源和关键词查询。标的归属必须同时给出 `asset_category + asset_symbol`。点评不可原地修改；`POST /commentaries/{id}/revisions` 会创建保留原文的新修订。
+
+点评正文可用 `structured`、`markdown` 或 `html` 提交。写入后统一保存为 version 1 的结构化 blocks；REST 同时返回安全渲染的 HTML 和 Markdown，MCP 默认返回 Markdown，可用 `output_format=structured` 获取 blocks。
+
 ## MCP 工具覆盖
 
-MCP 与上述业务接口保持同一套服务层逻辑，当前提供 38 个工具：
+MCP 与上述业务接口保持同一套服务层逻辑，当前提供 47 个工具：
 
 - 标的：`search_assets`、`list_assets`、`get_asset`、`register_asset`、`refresh_asset_market_data`、`get_market_history`、`set_asset_favorite`
 - 自选与分组：`list_asset_tags`、`update_asset_tags`、`add_asset_tag`、`remove_asset_tag`、`list_tags`、`create_tag`、`delete_tag`、`reorder_tags`、`pin_tag`、`list_tag_assets`
 - 汇率：`get_exchange_rate`
 - 组合：`create_portfolio`、`list_portfolios`、`get_portfolio`、`update_portfolio`、`set_portfolio_opening_snapshot`、`get_portfolio_opening_snapshot`、`delete_portfolio_opening_snapshot`、`get_portfolio_trades`、`get_portfolio_positions`、`add_portfolio_trade`
 - 组合兼容别名：`create_strategy`、`list_strategies`、`get_strategy`、`update_strategy`、`set_strategy_opening_snapshot`、`get_strategy_opening_snapshot`、`delete_strategy_opening_snapshot`、`get_strategy_trades`、`get_strategy_positions`、`add_strategy_trade`
+- 市场对象：`create_market_scope`、`list_market_scopes`、`get_market_scope`、`update_market_scope`、`delete_market_scope`
+- 点评：`create_commentary`、`list_commentaries`、`get_commentary`、`revise_commentary`
 
 MCP 不暴露 Celery 调度、后台同步等运维接口；这些任务由 Beat/Worker 按配置自动执行。
