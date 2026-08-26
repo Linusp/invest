@@ -119,6 +119,19 @@ def test_information_can_be_unassociated_and_linked_to_commentary(client):
         f"/api/v1/commentaries/{commentary['id']}/information/{information['id']}"
     ).status_code == 204
 
+    unsafe = client.post(
+        "/api/v1/information",
+        json={
+            "title": "不安全链接",
+            "source_name": "未知",
+            "url": "javascript:alert(1)",
+            "published_at": "2026-08-26T07:00:00Z",
+            "content": {"version": 1, "blocks": []},
+            "information_type": "news",
+        },
+    )
+    assert unsafe.status_code == 422
+
 
 def test_information_mcp_submission_and_queries(session_factory, provider):
     mcp = build_mcp(session_factory, provider)
@@ -150,3 +163,12 @@ def test_information_mcp_submission_and_queries(session_factory, provider):
     assert _call_tool(mcp, "list_information", {"query": "外部资讯"})[0][
         "id"
     ] == created["id"]
+
+
+def test_information_page_renders_and_filters_server_records(client):
+    page = client.get("/information")
+    assert page.status_code == 200
+    assert "资讯中心" in page.text
+    assert 'api("/information' in page.text
+    assert "关联市场代码" in page.text
+    assert "content_html" in page.text

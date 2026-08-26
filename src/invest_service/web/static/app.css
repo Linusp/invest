@@ -150,6 +150,11 @@ svg { width: 18px; height: 18px; flex: none; }
 .scope-profile { margin-bottom: 18px; }
 .scope-profile h2 { display: inline; margin-left: 8px; }
 .scope-profile p { margin-bottom: 6px; }
+.information-filters { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(130px, 1fr)) auto; gap: 10px; margin-bottom: 18px; }
+.information-grid { display: grid; gap: 14px; }
+.information-card h2 { margin: 10px 0; font-size: 18px; }
+.information-meta, .information-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.information-links { margin-top: 14px; }
 .empty-state { min-height: 320px; display: grid; place-items: center; text-align: center; color: var(--muted); padding: 28px; }
 .empty-state svg { width: 38px; height: 38px; margin-bottom: 10px; color: #9ca6b5; }
 
@@ -383,4 +388,5 @@ dialog::backdrop { background: rgba(20,28,40,.52); }
     .date-range-fields label { flex: 1; }
     .date-range-fields .input { width: 100%; }
     .tag-order-actions { opacity: 1; }
+    .information-filters { grid-template-columns: 1fr; }
 }

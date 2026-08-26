@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -167,6 +168,14 @@ class InformationCreate(APIModel):
     confidence: Decimal | None = Field(default=None, ge=0, le=1)
     market_scope_codes: list[str] = Field(default_factory=list, max_length=100)
     assets: list[InformationAssetRef] = Field(default_factory=list, max_length=100)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url(cls, value: str) -> str:
+        parsed = urlsplit(value.strip())
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("information URL must use http or https")
+        return value.strip()
 
     @field_validator("market_scope_codes")
     @classmethod

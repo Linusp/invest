@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% set active_page = "information" %}
+{% block title %}资讯 · Invest{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div><h1>资讯中心</h1><p>接收外部检索结果，按市场、板块和标的筛选</p></div>
+    <button id="new-information" class="button primary" type="button"><i data-lucide="plus"></i><span>提交资讯</span></button>
+</section>
+
+<section class="panel information-filters">
+    <input id="information-query" class="input" type="search" placeholder="搜索标题、摘要和正文">
+    <select id="information-type" class="input"><option value="">全部类型</option><option value="news">新闻</option><option value="announcement">公告</option><option value="research">研报</option><option value="macro">宏观</option><option value="event">事件</option></select>
+    <input id="information-source" class="input" placeholder="来源名称">
+    <select id="information-importance" class="input"><option value="">全部重要性</option><option value="5">5 星</option><option value="4">4 星以上</option><option value="3">3 星以上</option><option value="2">2 星以上</option><option value="1">1 星以上</option></select>
+    <select id="information-referenced" class="input"><option value="">全部引用状态</option><option value="true">已被点评引用</option><option value="false">尚未引用</option></select>
+    <button id="information-search" class="button" type="button"><i data-lucide="search"></i><span>筛选</span></button>
+</section>
+<div id="information-list" class="information-grid"></div>
+
+<dialog id="information-dialog" class="dialog-wide">
+    <form id="information-form">
+        <div class="dialog-header"><h2>提交资讯</h2><button class="icon-button" type="button" data-close="information-dialog" aria-label="关闭"><i data-lucide="x"></i></button></div>
+        <div class="dialog-body dialog-body-scroll">
+            <div class="form-grid">
+                <label class="field"><span class="label">标题</span><input name="title" class="input" maxlength="500" required></label>
+                <label class="field"><span class="label">来源名称</span><input name="source_name" class="input" maxlength="255" required></label>
+                <label class="field"><span class="label">原文 URL</span><input name="url" class="input" type="url" required></label>
+                <label class="field"><span class="label">发布时间</span><input name="published_at" class="input" type="datetime-local" required></label>
+                <label class="field"><span class="label">资讯类型</span><select name="information_type" class="input"><option value="news">新闻</option><option value="announcement">公告</option><option value="research">研报</option><option value="macro">宏观</option><option value="event">事件</option></select></label>
+                <label class="field"><span class="label">重要性（1-5）</span><input name="importance" class="input" type="number" min="1" max="5" value="3"></label>
+                <label class="field"><span class="label">可信度（0-1）</span><input name="confidence" class="input" type="number" min="0" max="1" step="0.01"></label>
+                <label class="field"><span class="label">语言</span><input name="language" class="input" value="zh-CN"></label>
+            </div>
+            <label class="field"><span class="label">摘要</span><textarea name="summary" class="textarea"></textarea></label>
+            <label class="field"><span class="label">正文摘录（Markdown）</span><textarea name="content" class="textarea commentary-editor" required></textarea></label>
+            <label class="field"><span class="label">原始搜索上下文 / 查询词</span><input name="search_context" class="input"></label>
+            <label class="field"><span class="label">关联市场代码</span><input name="market_scope_codes" class="input" placeholder="CN.ASHARE, CN.ASHARE.BANK"></label>
+            <label class="field"><span class="label">关联标的</span><input name="assets" class="input" placeholder="stock:600000.SH, etf:512800.SH"><small class="muted">使用 category:symbol，多个用逗号分隔</small></label>
+        </div>
+        <div class="dialog-footer"><button class="button" type="button" data-close="information-dialog">取消</button><button class="button primary" type="submit">提交</button></div>
+    </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+    const $ = id => document.getElementById(id);
+    const labels = {news:"新闻",announcement:"公告",research:"研报",macro:"宏观",event:"事件"};
+    const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[character]);
+    async function loadInformation() {
+        const params = new URLSearchParams();
+        const mappings = {"information-query":"query","information-type":"information_type","information-source":"source_name","information-importance":"min_importance","information-referenced":"referenced"};
+        Object.entries(mappings).forEach(([id, key]) => { if ($(id).value.trim()) params.set(key, $(id).value.trim()); });
+        const items = await api("/information?" + params);
+        $("information-list").innerHTML = items.length ? items.map(item => `
+            <article class="panel information-card">
+                <div class="information-meta"><span class="badge">${escapeHtml(labels[item.information_type] || item.information_type)}</span><span>${escapeHtml(item.source_name)}</span><time>${escapeHtml(new Date(item.published_at).toLocaleString("zh-CN"))}</time><span>${"★".repeat(item.importance)}</span>${item.is_referenced ? '<span class="badge">已引用</span>' : ""}</div>
+                <h2><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a></h2>
+                ${item.summary ? `<p class="commentary-summary">${escapeHtml(item.summary)}</p>` : ""}
+                <div class="commentary-content">${item.content_html}</div>
+                <div class="information-links">${item.market_scope_codes.map(code => `<span class="tag-chip">${escapeHtml(code)}</span>`).join("")}${item.assets.map(asset => `<a class="tag-chip" href="/market/${encodeURIComponent(asset.category)}/${encodeURIComponent(asset.symbol)}">${escapeHtml(asset.symbol)}</a>`).join("")}</div>
+            </article>`).join("") : '<div class="panel empty-state">暂无符合条件的资讯</div>';
+    }
+    function parseList(value) { return value.split(",").map(item => item.trim()).filter(Boolean); }
+    async function submitInformation(event) {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        const assets = parseList(data.get("assets")).map(value => {
+            const [category, ...symbol] = value.split(":");
+            return {category: category.trim(), symbol: symbol.join(":").trim()};
+        });
+        const payload = {
+            title: data.get("title").trim(), source_name: data.get("source_name").trim(),
+            url: data.get("url").trim(), published_at: new Date(data.get("published_at")).toISOString(),
+            summary: data.get("summary").trim() || null, content: data.get("content"),
+            content_format: "markdown", information_type: data.get("information_type"),
+            importance: Number(data.get("importance")), confidence: data.get("confidence") || null,
+            language: data.get("language").trim(), search_context: data.get("search_context").trim() || null,
+            market_scope_codes: parseList(data.get("market_scope_codes")), assets,
+        };
+        await api("/information", {method: "POST", body: JSON.stringify(payload)});
+        $("information-dialog").close();
+        showToast("资讯已提交", "success");
+        await loadInformation();
+    }
+    $("new-information").addEventListener("click", () => { $("information-form").reset(); $("information-dialog").showModal(); });
+    $("information-search").addEventListener("click", () => loadInformation().catch(error => showToast(error.message, "error")));
+    $("information-form").addEventListener("submit", event => submitInformation(event).catch(error => showToast(error.message, "error")));
+    document.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", () => $(button.dataset.close).close()));
+    loadInformation().catch(error => showToast(error.message, "error"));
+})();
+</script>
+{% endblock %}

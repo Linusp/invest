@@ -89,3 +89,8 @@ def strategy(request: Request):
 @router.get("/analysis", response_class=HTMLResponse)
 def analysis(request: Request):
     return templates.TemplateResponse(request=request, name="analysis.html")
+
+
+@router.get("/information", response_class=HTMLResponse)
+def information(request: Request):
+    return templates.TemplateResponse(request=request, name="information.html")
