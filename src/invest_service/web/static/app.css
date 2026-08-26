@@ -134,7 +134,8 @@ svg { width: 18px; height: 18px; flex: none; }
 .portfolio-info-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 18px 28px; }
 .portfolio-info-grid span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
 .portfolio-info-grid strong { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
-.commentary-panel { margin-top: 18px; }
+.commentary-panel { margin-top: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+.commentary-panel .panel-header { padding-left: 0; padding-right: 0; }
 .commentary-header { align-items: center; }
 .commentary-list { display: grid; gap: 12px; }
 .commentary-item { border-top: 1px solid #edf0f3; padding: 16px 2px 4px; }
@@ -154,7 +155,8 @@ svg { width: 18px; height: 18px; flex: none; }
 .commentary-metric dd { margin: 0; font-weight: 700; }
 .commentary-flags { margin-top: 12px; }
 .commentary-flags span { padding: 2px 7px; border-radius: 999px; background: #f3f5f7; }
-.trade-plans { margin-top: 18px; }
+.trade-plans { margin-top: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+.trade-plans .panel-header { padding-left: 0; padding-right: 0; }
 .commentary-editor { min-height: 220px; }
 .scope-profile { margin-bottom: 18px; }
 .scope-profile h2 { display: inline; margin-left: 8px; }
