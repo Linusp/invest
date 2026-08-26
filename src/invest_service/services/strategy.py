@@ -111,6 +111,15 @@ class StrategyService:
         strategy = Strategy(
             name=data.name.strip(),
             description=data.description,
+            initial_capital=(
+                _six(data.initial_capital) if data.initial_capital is not None else None
+            ),
+            investment_style=data.investment_style,
+            is_owned=data.is_owned,
+            purpose=data.purpose,
+            investment_direction=data.investment_direction,
+            constraints=data.constraints,
+            notes=data.notes,
             legacy_currency=self.reporting_currency,
         )
         self.session.add(strategy)
@@ -146,8 +155,21 @@ class StrategyService:
         strategy = self.get(strategy_id)
         if data.name is not None:
             strategy.name = data.name.strip()
-        if "description" in data.model_fields_set:
-            strategy.description = data.description
+        for field in (
+            "description",
+            "initial_capital",
+            "investment_style",
+            "is_owned",
+            "purpose",
+            "investment_direction",
+            "constraints",
+            "notes",
+        ):
+            if field in data.model_fields_set:
+                value = getattr(data, field)
+                if field == "initial_capital" and value is not None:
+                    value = _six(value)
+                setattr(strategy, field, value)
         self.session.commit()
         return strategy
 

@@ -81,9 +81,24 @@ def test_upgrades_legacy_currency_and_opening_snapshot_schema(tmp_path):
         item["name"] for item in inspect(engine).get_columns("asset_tags")
     }
     assert {"favorite_since", "favorite_price"} <= asset_tag_columns
+    strategy_columns = {
+        item["name"] for item in inspect(engine).get_columns("strategies")
+    }
+    assert {
+        "initial_capital",
+        "investment_style",
+        "is_owned",
+        "purpose",
+        "investment_direction",
+        "constraints",
+        "notes",
+    } <= strategy_columns
     with engine.connect() as connection:
         assert connection.execute(
             text("SELECT is_favorite FROM assets WHERE symbol = '600000.SH'")
+        ).scalar_one() in (True, 1)
+        assert connection.execute(
+            text("SELECT is_owned FROM strategies WHERE id = 's1'")
         ).scalar_one() in (True, 1)
     with Session(engine) as session:
         balance = session.query(OpeningBalance).one()

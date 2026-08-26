@@ -10,7 +10,13 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 
-from .api import assets_router, exchange_rates_router, strategies_router, tags_router
+from .api import (
+    assets_router,
+    exchange_rates_router,
+    portfolios_router,
+    strategies_router,
+    tags_router,
+)
 from .config import Settings, get_settings
 from .database import Base, make_engine, make_session_factory
 from .mcp_server import build_mcp
@@ -153,6 +159,7 @@ def create_app(
 
     app.include_router(assets_router, prefix="/api/v1")
     app.include_router(exchange_rates_router, prefix="/api/v1")
+    app.include_router(portfolios_router, prefix="/api/v1")
     app.include_router(strategies_router, prefix="/api/v1")
     app.include_router(tags_router, prefix="/api/v1")
     app.include_router(web_router)

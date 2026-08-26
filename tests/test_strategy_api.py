@@ -133,13 +133,63 @@ def test_rejects_oversell_and_supports_strategy_update(client):
     assert updated.json()["description"] is None
 
 
+def test_portfolio_api_maintains_portfolio_metadata_and_strategy_compatibility(client):
+    created = client.post(
+        "/api/v1/portfolios",
+        json={
+            "name": "银河证券",
+            "description": "兼容说明",
+            "initial_capital": "500000",
+            "investment_style": "稳健",
+            "is_owned": True,
+            "purpose": "家庭长期资产",
+            "investment_direction": "A 股红利与宽基",
+            "constraints": "单一标的不超过 20%",
+            "notes": "每季度复盘",
+        },
+    )
+
+    assert created.status_code == 201
+    portfolio = created.json()
+    assert portfolio["initial_capital"] == "500000.000000"
+    assert portfolio["investment_style"] == "稳健"
+    assert portfolio["is_owned"] is True
+    assert portfolio["purpose"] == "家庭长期资产"
+    assert portfolio["investment_direction"] == "A 股红利与宽基"
+    assert portfolio["constraints"] == "单一标的不超过 20%"
+    assert portfolio["notes"] == "每季度复盘"
+
+    strategy = client.get(f"/api/v1/strategies/{portfolio['id']}")
+    assert strategy.status_code == 200
+    assert strategy.json()["initial_capital"] == "500000.000000"
+
+    updated = client.patch(
+        f"/api/v1/portfolios/{portfolio['id']}",
+        json={
+            "initial_capital": "600000",
+            "investment_style": "均衡",
+            "is_owned": False,
+            "constraints": None,
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["initial_capital"] == "600000.000000"
+    assert updated.json()["investment_style"] == "均衡"
+    assert updated.json()["is_owned"] is False
+    assert updated.json()["constraints"] is None
+
+    listed = client.get("/api/v1/portfolios").json()
+    assert [item["id"] for item in listed] == [portfolio["id"]]
+
+
 def test_web_strategy_page_uses_server_api(client):
     page = client.get("/strategy")
     assert page.status_code == 200
-    assert "策略管理" in page.text
+    assert "组合管理" in page.text
+    assert "投资风格" in page.text
     assert "期初状态" in page.text
     assert "historical_net_contribution" in page.text
-    assert 'api("/strategies' in page.text
+    assert 'api("/portfolios' in page.text
     assert "localStorage" not in page.text
 
 

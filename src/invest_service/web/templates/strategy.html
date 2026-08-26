@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% set active_page = "strategy" %}
-{% block title %}策略 · Invest{% endblock %}
+{% block title %}组合 · Invest{% endblock %}
 {% block content %}
 <section class="page-heading">
     <div>
-        <h1>策略管理</h1>
+        <h1>组合管理</h1>
         <p id="strategy-subtitle">组合、交易与持仓</p>
     </div>
     <div class="actions">
@@ -26,8 +26,8 @@
 <div class="strategy-layout">
     <aside class="panel strategy-sidebar">
         <div class="panel-header">
-            <h2 class="panel-title">我的策略</h2>
-            <button id="new-strategy" class="icon-button" type="button" title="创建策略" aria-label="创建策略">
+            <h2 class="panel-title">我的组合</h2>
+            <button id="new-strategy" class="icon-button" type="button" title="创建组合" aria-label="创建组合">
                 <i data-lucide="plus"></i>
             </button>
         </div>
@@ -37,12 +37,21 @@
     <section id="strategy-empty" class="panel empty-state">
         <div>
             <i data-lucide="briefcase-business"></i>
-            <div>暂无策略</div>
-            <button id="empty-create" class="button primary" type="button" style="margin-top:14px">创建策略</button>
+            <div>暂无组合</div>
+            <button id="empty-create" class="button primary" type="button" style="margin-top:14px">创建组合</button>
         </div>
     </section>
 
     <section id="strategy-detail" hidden>
+        <div class="panel portfolio-profile">
+            <div><span>投资风格</span><strong id="profile-style">--</strong></div>
+            <div><span>初始本金</span><strong id="profile-capital" class="sensitive">--</strong></div>
+            <div><span>资产归属</span><strong id="profile-owned">--</strong></div>
+            <div><span>用途</span><strong id="profile-purpose">--</strong></div>
+            <div><span>投资方向</span><strong id="profile-direction">--</strong></div>
+            <div><span>约束条件</span><strong id="profile-constraints">--</strong></div>
+            <div><span>备注</span><strong id="profile-notes">--</strong></div>
+        </div>
         <div class="metric-grid sensitive">
             <div class="metric"><span>总资产</span><strong id="metric-total">--</strong></div>
             <div class="metric"><span>净投入</span><strong id="metric-principal">--</strong></div>
@@ -89,7 +98,7 @@
 <dialog id="strategy-dialog">
     <form id="strategy-form">
         <div class="dialog-header">
-            <h2 id="strategy-dialog-title">创建策略</h2>
+            <h2 id="strategy-dialog-title">创建组合</h2>
             <button class="icon-button" type="button" data-close="strategy-dialog" aria-label="关闭"><i data-lucide="x"></i></button>
         </div>
         <div class="dialog-body">
@@ -100,6 +109,34 @@
             <label class="field">
                 <span class="label">描述</span>
                 <textarea id="strategy-description" class="textarea" maxlength="2000"></textarea>
+            </label>
+            <label class="field">
+                <span class="label">初始本金</span>
+                <input id="strategy-initial-capital" class="input" type="number" min="0" step="0.01">
+            </label>
+            <label class="field">
+                <span class="label">投资风格</span>
+                <input id="strategy-investment-style" class="input" maxlength="64" placeholder="稳健、均衡、激进等">
+            </label>
+            <label class="field checkbox-field">
+                <input id="strategy-is-owned" type="checkbox" checked>
+                <span>自有资产</span>
+            </label>
+            <label class="field">
+                <span class="label">管理对象 / 用途</span>
+                <textarea id="strategy-purpose" class="textarea" maxlength="2000"></textarea>
+            </label>
+            <label class="field">
+                <span class="label">投资方向</span>
+                <textarea id="strategy-investment-direction" class="textarea" maxlength="2000"></textarea>
+            </label>
+            <label class="field">
+                <span class="label">约束条件</span>
+                <textarea id="strategy-constraints" class="textarea" maxlength="2000"></textarea>
+            </label>
+            <label class="field">
+                <span class="label">备注</span>
+                <textarea id="strategy-notes" class="textarea" maxlength="2000"></textarea>
             </label>
         </div>
         <div class="dialog-footer">
@@ -276,7 +313,7 @@
                 <strong>${escapeHtml(item.name)}</strong>
                 <small>${escapeHtml(item.description || "暂无描述")}</small>
             </button>`).join("") :
-            '<div class="empty-state" style="min-height:160px"><div>暂无策略</div></div>';
+            '<div class="empty-state" style="min-height:160px"><div>暂无组合</div></div>';
         $("strategy-list").querySelectorAll("[data-strategy-id]").forEach(button => {
             button.addEventListener("click", () => selectStrategy(button.dataset.strategyId));
         });
@@ -284,7 +321,7 @@
 
     async function loadStrategies(preferredId = null) {
         try {
-            state.strategies = await api("/strategies?limit=500");
+            state.strategies = await api("/portfolios?limit=500");
             const nextId = preferredId || state.activeId || state.strategies[0]?.id;
             state.activeId = state.strategies.some(item => item.id === nextId) ? nextId : null;
             renderStrategies();
@@ -297,7 +334,7 @@
         state.activeId = id;
         renderStrategies();
         try {
-            state.detail = await api("/strategies/" + id);
+            state.detail = await api("/portfolios/" + id);
             for (const position of state.detail.positions) {
                 state.assets.set(assetIdentity(position.asset), position.asset);
             }
@@ -324,6 +361,14 @@
         const detail = state.detail;
         const summary = detail.summary;
         const currency = summary.reporting_currency;
+        $("profile-style").textContent = detail.investment_style || "--";
+        $("profile-capital").textContent = detail.initial_capital == null
+            ? "--" : money(detail.initial_capital, currency);
+        $("profile-owned").textContent = detail.is_owned ? "自有资产" : "代管 / 其他";
+        $("profile-purpose").textContent = detail.purpose || "--";
+        $("profile-direction").textContent = detail.investment_direction || "--";
+        $("profile-constraints").textContent = detail.constraints || "--";
+        $("profile-notes").textContent = detail.notes || "--";
         const hasContribution = summary.net_contribution !== null;
         const profitRate = hasContribution && Number(summary.net_contribution)
             ? Number(summary.total_profit) / Number(summary.net_contribution) * 100 : 0;
@@ -388,9 +433,16 @@
 
     function openStrategyDialog(editing) {
         state.editing = editing;
-        $("strategy-dialog-title").textContent = editing ? "编辑策略" : "创建策略";
+        $("strategy-dialog-title").textContent = editing ? "编辑组合" : "创建组合";
         $("strategy-name").value = editing ? state.detail.name : "";
         $("strategy-description").value = editing ? state.detail.description || "" : "";
+        $("strategy-initial-capital").value = editing ? state.detail.initial_capital || "" : "";
+        $("strategy-investment-style").value = editing ? state.detail.investment_style || "" : "";
+        $("strategy-is-owned").checked = editing ? state.detail.is_owned : true;
+        $("strategy-purpose").value = editing ? state.detail.purpose || "" : "";
+        $("strategy-investment-direction").value = editing ? state.detail.investment_direction || "" : "";
+        $("strategy-constraints").value = editing ? state.detail.constraints || "" : "";
+        $("strategy-notes").value = editing ? state.detail.notes || "" : "";
         $("strategy-dialog").showModal();
     }
 
@@ -399,21 +451,28 @@
         const payload = {
             name: $("strategy-name").value.trim(),
             description: $("strategy-description").value.trim() || null,
+            initial_capital: $("strategy-initial-capital").value || null,
+            investment_style: $("strategy-investment-style").value.trim() || null,
+            is_owned: $("strategy-is-owned").checked,
+            purpose: $("strategy-purpose").value.trim() || null,
+            investment_direction: $("strategy-investment-direction").value.trim() || null,
+            constraints: $("strategy-constraints").value.trim() || null,
+            notes: $("strategy-notes").value.trim() || null,
         };
         try {
             let saved;
             if (state.editing) {
-                saved = await api("/strategies/" + state.activeId, {
+                saved = await api("/portfolios/" + state.activeId, {
                     method: "PATCH", body: JSON.stringify(payload),
                 });
             } else {
-                saved = await api("/strategies", {
+                saved = await api("/portfolios", {
                     method: "POST",
                     body: JSON.stringify(payload),
                 });
             }
             $("strategy-dialog").close();
-            showToast("策略已保存", "success");
+            showToast("组合已保存", "success");
             await loadStrategies(saved.id);
         } catch (error) { showToast(error.message, "error"); }
     }
@@ -590,7 +649,7 @@
             })),
         };
         try {
-            await api("/strategies/" + state.activeId + "/opening-snapshot", {
+            await api("/portfolios/" + state.activeId + "/opening-snapshot", {
                 method: "PUT", body: JSON.stringify(payload),
             });
             $("snapshot-dialog").close();
@@ -602,7 +661,7 @@
     async function deleteSnapshot() {
         if (!window.confirm("确定删除期初状态？")) return;
         try {
-            await api("/strategies/" + state.activeId + "/opening-snapshot", {method: "DELETE"});
+            await api("/portfolios/" + state.activeId + "/opening-snapshot", {method: "DELETE"});
             $("snapshot-dialog").close();
             showToast("期初状态已删除", "success");
             await selectStrategy(state.activeId);
@@ -682,7 +741,7 @@
             idempotency_key: crypto.randomUUID?.() || String(Date.now()),
         };
         try {
-            await api("/strategies/" + state.activeId + "/trades", {
+            await api("/portfolios/" + state.activeId + "/trades", {
                 method: "POST", body: JSON.stringify(payload),
             });
             $("trade-dialog").close();

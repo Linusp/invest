@@ -126,6 +126,25 @@ def prepare_legacy_schema(engine: Engine) -> None:
                         "favorite_price NUMERIC(20, 6)"
                     )
                 )
+    if "strategies" in table_names:
+        strategy_columns = {
+            item["name"] for item in inspector.get_columns("strategies")
+        }
+        additions = {
+            "initial_capital": "NUMERIC(24, 6)",
+            "investment_style": "VARCHAR(64)",
+            "is_owned": "BOOLEAN NOT NULL DEFAULT TRUE",
+            "purpose": "TEXT",
+            "investment_direction": "TEXT",
+            "constraints": "TEXT",
+            "notes": "TEXT",
+        }
+        with engine.begin() as connection:
+            for name, sql_type in additions.items():
+                if name not in strategy_columns:
+                    connection.execute(
+                        text(f"ALTER TABLE strategies ADD COLUMN {name} {sql_type}")
+                    )
     if "trades" in table_names:
         trade_columns = {
             item["name"] for item in inspector.get_columns("trades")

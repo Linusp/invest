@@ -218,6 +218,13 @@ class Strategy(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(255), index=True)
     description: Mapped[str | None] = mapped_column(Text)
+    initial_capital: Mapped[Decimal | None] = mapped_column(Numeric(24, 6))
+    investment_style: Mapped[str | None] = mapped_column(String(64))
+    is_owned: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    purpose: Mapped[str | None] = mapped_column(Text)
+    investment_direction: Mapped[str | None] = mapped_column(Text)
+    constraints: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
     legacy_currency: Mapped[str] = mapped_column("currency", String(3), default="CNY")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(

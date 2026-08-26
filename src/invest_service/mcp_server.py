@@ -260,39 +260,105 @@ def build_mcp(
             return _json(ExchangeRateRead.model_validate(rate))
 
     @mcp.tool()
-    def create_strategy(name: str, description: str | None = None) -> dict:
-        """Create a persisted investment strategy."""
+    def create_portfolio(
+        name: str,
+        description: str | None = None,
+        initial_capital: float | None = None,
+        investment_style: str | None = None,
+        is_owned: bool = True,
+        purpose: str | None = None,
+        investment_direction: str | None = None,
+        constraints: str | None = None,
+        notes: str | None = None,
+    ) -> dict:
+        """Create a portfolio ledger with its investment profile."""
         with session_factory() as session:
             strategy = strategies(session).create(
-                StrategyCreate(name=name, description=description)
+                StrategyCreate(
+                    name=name,
+                    description=description,
+                    initial_capital=(
+                        Decimal(str(initial_capital))
+                        if initial_capital is not None
+                        else None
+                    ),
+                    investment_style=investment_style,
+                    is_owned=is_owned,
+                    purpose=purpose,
+                    investment_direction=investment_direction,
+                    constraints=constraints,
+                    notes=notes,
+                )
             )
             return _json_strategy(strategy)
 
     @mcp.tool()
-    def list_strategies() -> list[dict]:
-        """List investment strategies."""
+    def list_portfolios() -> list[dict]:
+        """List portfolio ledgers."""
         with session_factory() as session:
             return [_json_strategy(item) for item in strategies(session).list()]
 
     @mcp.tool()
-    def get_strategy(strategy_id: str) -> dict:
-        """Get strategy metadata, summary, trades and current positions."""
+    def get_portfolio(portfolio_id: str) -> dict:
+        """Get portfolio metadata, summary, trades and current positions."""
         with session_factory() as session:
-            return _json(strategies(session).detail(strategy_id))
+            return _json(strategies(session).detail(portfolio_id))
+
+    @mcp.tool()
+    def update_portfolio(
+        portfolio_id: str,
+        name: str | None = None,
+        description: str | None = None,
+        initial_capital: float | None = None,
+        investment_style: str | None = None,
+        is_owned: bool | None = None,
+        purpose: str | None = None,
+        investment_direction: str | None = None,
+        constraints: str | None = None,
+        notes: str | None = None,
+    ) -> dict:
+        """Modify portfolio metadata and investment profile fields."""
+        changes = {}
+        values = {
+            "name": name,
+            "description": description,
+            "investment_style": investment_style,
+            "is_owned": is_owned,
+            "purpose": purpose,
+            "investment_direction": investment_direction,
+            "constraints": constraints,
+            "notes": notes,
+        }
+        changes.update({key: value for key, value in values.items() if value is not None})
+        if initial_capital is not None:
+            changes["initial_capital"] = Decimal(str(initial_capital))
+        with session_factory() as session:
+            strategy = strategies(session).update(
+                portfolio_id, StrategyUpdate(**changes)
+            )
+            return _json_strategy(strategy)
+
+    @mcp.tool()
+    def create_strategy(name: str, description: str | None = None) -> dict:
+        """Compatibility alias for creating a portfolio ledger."""
+        return create_portfolio(name=name, description=description)
+
+    @mcp.tool()
+    def list_strategies() -> list[dict]:
+        """Compatibility alias for listing portfolio ledgers."""
+        return list_portfolios()
+
+    @mcp.tool()
+    def get_strategy(strategy_id: str) -> dict:
+        """Compatibility alias for getting a portfolio ledger."""
+        return get_portfolio(strategy_id)
 
     @mcp.tool()
     def update_strategy(
         strategy_id: str, name: str | None = None, description: str | None = None
     ) -> dict:
-        """Modify a strategy name or description."""
-        changes = {}
-        if name is not None:
-            changes["name"] = name
-        if description is not None:
-            changes["description"] = description
-        with session_factory() as session:
-            strategy = strategies(session).update(strategy_id, StrategyUpdate(**changes))
-            return _json_strategy(strategy)
+        """Compatibility alias for modifying a portfolio ledger."""
+        return update_portfolio(strategy_id, name=name, description=description)
 
     @mcp.tool()
     def set_strategy_opening_snapshot(
@@ -382,6 +448,69 @@ def build_mcp(
                 ),
             )
             return _json(TradeRead.model_validate(trade))
+
+    @mcp.tool()
+    def set_portfolio_opening_snapshot(
+        portfolio_id: str,
+        snapshot_date: str,
+        balances: list[dict[str, Any]],
+        positions: list[dict[str, Any]],
+    ) -> dict:
+        """Set a portfolio's opening cash and holdings snapshot."""
+        return set_strategy_opening_snapshot(
+            portfolio_id, snapshot_date, balances, positions
+        )
+
+    @mcp.tool()
+    def get_portfolio_opening_snapshot(portfolio_id: str) -> dict | None:
+        """Get a portfolio's opening cash and holdings snapshot."""
+        return get_strategy_opening_snapshot(portfolio_id)
+
+    @mcp.tool()
+    def delete_portfolio_opening_snapshot(portfolio_id: str) -> None:
+        """Delete a portfolio opening snapshot when it has no later transactions."""
+        return delete_strategy_opening_snapshot(portfolio_id)
+
+    @mcp.tool()
+    def get_portfolio_trades(portfolio_id: str) -> list[dict]:
+        """List all portfolio transactions in reverse chronological order."""
+        return get_strategy_trades(portfolio_id)
+
+    @mcp.tool()
+    def get_portfolio_positions(
+        portfolio_id: str, as_of: str | None = None
+    ) -> list[dict]:
+        """Calculate portfolio holdings, cost basis and P/L."""
+        return get_strategy_positions(portfolio_id, as_of)
+
+    @mcp.tool()
+    def add_portfolio_trade(
+        portfolio_id: str,
+        trade_type: str,
+        trade_date: str,
+        price: float,
+        asset_symbol: str | None = None,
+        asset_category: str | None = None,
+        quantity: float = 0,
+        fee: float = 0,
+        note: str | None = None,
+        idempotency_key: str | None = None,
+        currency: str | None = None,
+    ) -> dict:
+        """Add a transaction to a portfolio ledger."""
+        return add_strategy_trade(
+            portfolio_id,
+            trade_type,
+            trade_date,
+            price,
+            asset_symbol,
+            asset_category,
+            quantity,
+            fee,
+            note,
+            idempotency_key,
+            currency,
+        )
 
     return mcp
 
