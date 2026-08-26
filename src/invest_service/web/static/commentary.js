@@ -41,7 +41,6 @@
                             <option value="">全部时段</option>
                             ${Object.entries(sessionLabels).map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}
                         </select>
-                        <select class="input commentary-page-size" aria-label="每页条数"><option>10</option><option selected>20</option><option>50</option></select>
                         <button class="button primary commentary-add" type="button"><i data-lucide="message-square-plus"></i><span>添加</span></button>
                 </div>
                 <div class="table-wrap"><table class="data-table commentary-table"><thead><tr><th><button class="table-sort" data-commentary-sort="date">日期</button></th><th><button class="table-sort" data-commentary-sort="session">时段</button></th><th><button class="table-sort" data-commentary-sort="title">标题</button></th><th><button class="table-sort" data-commentary-sort="summary">摘要</button></th><th><button class="table-sort" data-commentary-sort="source">来源</button></th></tr></thead><tbody class="commentary-list"><tr><td colspan="5"><div class="empty-state compact">请选择分析对象</div></td></tr></tbody></table></div>
@@ -76,7 +75,6 @@
         const form = dialog.querySelector("form");
         const filter = root.querySelector(".commentary-session-filter");
         const query = root.querySelector(".commentary-query");
-        const size = root.querySelector(".commentary-page-size");
         const pager = root.querySelector(".commentary-pager");
 
         async function load() {
@@ -129,7 +127,12 @@
                     }
                 });
             });
-            pager.innerHTML = `<span>共 ${filtered.length} 条 · 第 ${page}/${pages} 页</span><div><button class="button" type="button" data-page="prev" ${page <= 1 ? "disabled" : ""}>上一页</button><button class="button" type="button" data-page="next" ${page >= pages ? "disabled" : ""}>下一页</button></div>`;
+            pager.innerHTML = `<span>共 ${filtered.length} 条 · 第 ${page}/${pages} 页</span><div><label class="pager-size">每页 <select class="input" data-page-size><option ${pageSize === 10 ? "selected" : ""}>10</option><option ${pageSize === 20 ? "selected" : ""}>20</option><option ${pageSize === 50 ? "selected" : ""}>50</option></select> 条</label><button class="button" type="button" data-page="prev" ${page <= 1 ? "disabled" : ""}>上一页</button><button class="button" type="button" data-page="next" ${page >= pages ? "disabled" : ""}>下一页</button></div>`;
+            pager.querySelector("[data-page-size]").addEventListener("change", event => {
+                pageSize = Number(event.target.value);
+                page = 1;
+                render();
+            });
             pager.querySelectorAll("[data-page]").forEach(button => button.addEventListener("click", () => {
                 page += button.dataset.page === "next" ? 1 : -1;
                 render();
@@ -181,7 +184,6 @@
             render();
         }));
         query.addEventListener("input", () => { page = 1; render(); });
-        size.addEventListener("change", () => { pageSize = Number(size.value); page = 1; render(); });
         form.addEventListener("submit", save);
         window.lucide?.createIcons();
         return {

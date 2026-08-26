@@ -140,9 +140,10 @@ svg { width: 18px; height: 18px; flex: none; }
 .list-toolbar, .commentary-toolbar { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
 .list-toolbar .input, .commentary-toolbar .input { width: auto; min-width: 130px; }
 .list-toolbar input.input, .commentary-toolbar input.input { flex: 1 1 220px; }
-.list-toolbar .page-size, .commentary-toolbar .commentary-page-size { min-width: 76px; }
 .list-pager { min-height: 50px; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 .list-pager > div { display: flex; gap: 8px; }
+.pager-size { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.pager-size .input { width: 64px; min-width: 64px; height: 34px; padding: 0 8px; }
 .commentary-list-row { cursor: pointer; }
 .commentary-list-title { font-weight: 650; }
 .commentary-list-summary { max-width: 520px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }

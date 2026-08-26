@@ -66,7 +66,7 @@
             </div>
 
             <div id="positions-tab">
-                <div class="list-toolbar"><input id="positions-query" class="input" type="search" placeholder="筛选标的"><select id="positions-page-size" class="input page-size"><option>10</option><option selected>20</option><option>50</option></select></div>
+                <div class="list-toolbar"><input id="positions-query" class="input" type="search" placeholder="筛选标的"></div>
                 <div class="table-wrap"><table class="data-table">
                     <thead><tr>
                         <th><button class="table-sort" data-sort-table="positions" data-sort-field="asset">标的</button></th><th class="text-right"><button class="table-sort" data-sort-table="positions" data-sort-field="quantity">数量</button></th><th class="text-right"><button class="table-sort" data-sort-table="positions" data-sort-field="cost">平均成本</button></th>
@@ -78,7 +78,7 @@
             </div>
 
             <div id="trades-tab" hidden>
-                <div class="list-toolbar"><input id="trades-query" class="input" type="search" placeholder="筛选标的或备注"><select id="trades-type" class="input"><option value="">全部类型</option><option value="buy">买入</option><option value="sell">卖出</option><option value="deposit">入金</option><option value="withdraw">出金</option></select><select id="trades-page-size" class="input page-size"><option>10</option><option selected>20</option><option>50</option></select></div>
+                <div class="list-toolbar"><input id="trades-query" class="input" type="search" placeholder="筛选标的或备注"><select id="trades-type" class="input"><option value="">全部类型</option><option value="buy">买入</option><option value="sell">卖出</option><option value="deposit">入金</option><option value="withdraw">出金</option></select></div>
                 <div class="table-wrap"><table class="data-table">
                     <thead><tr>
                         <th><button class="table-sort" data-sort-table="trades" data-sort-field="date">日期</button></th><th><button class="table-sort" data-sort-table="trades" data-sort-field="type">类型</button></th><th><button class="table-sort" data-sort-table="trades" data-sort-field="asset">标的</button></th><th><button class="table-sort" data-sort-table="trades" data-sort-field="position">持仓 ID</button></th><th class="text-right"><button class="table-sort" data-sort-table="trades" data-sort-field="amount">价格 / 金额</button></th>
@@ -89,7 +89,7 @@
             </div>
             <div id="commentary-tab" hidden><div id="portfolio-commentary"></div></div>
             <div id="trade-plans-tab" hidden>
-              <div class="list-toolbar"><input id="plans-query" class="input" type="search" placeholder="筛选标的或条件"><select id="plans-action" class="input"><option value="">全部动作</option><option value="buy">买入</option><option value="sell">卖出</option></select><select id="plans-status" class="input"><option value="">全部状态</option><option value="draft">草稿</option><option value="active">生效</option><option value="triggered">待确认</option><option value="partially_executed">部分执行</option><option value="executed">已执行</option><option value="expired">已过期</option><option value="cancelled">已取消</option></select><select id="plans-page-size" class="input page-size"><option>10</option><option selected>20</option><option>50</option></select></div>
+              <div class="list-toolbar"><input id="plans-query" class="input" type="search" placeholder="筛选标的或条件"><select id="plans-action" class="input"><option value="">全部动作</option><option value="buy">买入</option><option value="sell">卖出</option></select><select id="plans-status" class="input"><option value="">全部状态</option><option value="draft">草稿</option><option value="active">生效</option><option value="triggered">待确认</option><option value="partially_executed">部分执行</option><option value="executed">已执行</option><option value="expired">已过期</option><option value="cancelled">已取消</option></select></div>
               <div id="trade-plans" class="trade-plans" hidden>
                 <div class="table-wrap"><table class="data-table"><thead><tr><th><button class="table-sort" data-sort-table="plans" data-sort-field="asset">标的</button></th><th><button class="table-sort" data-sort-table="plans" data-sort-field="action">动作</button></th><th><button class="table-sort" data-sort-table="plans" data-sort-field="condition">条件</button></th><th><button class="table-sort" data-sort-table="plans" data-sort-field="size">规模</button></th><th><button class="table-sort" data-sort-table="plans" data-sort-field="valid">有效期</button></th><th><button class="table-sort" data-sort-table="plans" data-sort-field="status">状态</button></th></tr></thead><tbody id="trade-plans-body"></tbody></table></div>
               </div>
@@ -304,7 +304,7 @@
 </dialog>
 {% endblock %}
 {% block scripts %}
-<script src="/static/commentary.js?v=20260826-5"></script>
+<script src="/static/commentary.js?v=20260826-6"></script>
 <script>
 (() => {
     const state = {
@@ -349,7 +349,12 @@
 
     function renderPager(id, total, view, pages, render) {
         const root = $(id);
-        root.innerHTML = `<span>共 ${total} 条 · 第 ${view.page}/${pages} 页</span><div><button class="button" type="button" data-page="prev" ${view.page <= 1 ? "disabled" : ""}>上一页</button><button class="button" type="button" data-page="next" ${view.page >= pages ? "disabled" : ""}>下一页</button></div>`;
+        root.innerHTML = `<span>共 ${total} 条 · 第 ${view.page}/${pages} 页</span><div><label class="pager-size">每页 <select class="input" data-page-size><option ${view.size === 10 ? "selected" : ""}>10</option><option ${view.size === 20 ? "selected" : ""}>20</option><option ${view.size === 50 ? "selected" : ""}>50</option></select> 条</label><button class="button" type="button" data-page="prev" ${view.page <= 1 ? "disabled" : ""}>上一页</button><button class="button" type="button" data-page="next" ${view.page >= pages ? "disabled" : ""}>下一页</button></div>`;
+        root.querySelector("[data-page-size]").addEventListener("change", event => {
+            view.size = Number(event.target.value);
+            view.page = 1;
+            render();
+        });
         root.querySelectorAll("[data-page]").forEach(button => button.addEventListener("click", () => {
             view.page += button.dataset.page === "next" ? 1 : -1;
             render();
@@ -898,13 +903,12 @@
     function bindListControls(name, ids, render) {
         ids.forEach(id => $(id).addEventListener(id.endsWith("query") ? "input" : "change", () => {
             listViews[name].page = 1;
-            if (id.endsWith("page-size")) listViews[name].size = Number($(id).value);
             render();
         }));
     }
-    bindListControls("positions", ["positions-query", "positions-page-size"], renderPositions);
-    bindListControls("trades", ["trades-query", "trades-type", "trades-page-size"], renderTrades);
-    bindListControls("plans", ["plans-query", "plans-action", "plans-status", "plans-page-size"], renderTradePlans);
+    bindListControls("positions", ["positions-query"], renderPositions);
+    bindListControls("trades", ["trades-query", "trades-type"], renderTrades);
+    bindListControls("plans", ["plans-query", "plans-action", "plans-status"], renderTradePlans);
     document.querySelectorAll("[data-sort-table]").forEach(button => button.addEventListener("click", () => {
         const view = listViews[button.dataset.sortTable];
         const [field, direction] = view.sort?.split(":") || [null, null];
