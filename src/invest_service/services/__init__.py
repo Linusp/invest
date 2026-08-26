@@ -1,5 +1,6 @@
 from .commentary import CommentaryNotFound, CommentaryService
 from .exchange_rate import ExchangeRateService, ExchangeRateUnavailable
+from .information import InformationNotFound, InformationService
 from .market import AssetNotFound, MarketService, TagNotFound
 from .market_scope import MarketScopeInUse, MarketScopeNotFound, MarketScopeService
 from .strategy import InvalidTrade, StrategyNotFound, StrategyService
@@ -11,6 +12,8 @@ __all__ = [
     "ExchangeRateService",
     "ExchangeRateUnavailable",
     "InvalidTrade",
+    "InformationNotFound",
+    "InformationService",
     "MarketService",
     "MarketScopeInUse",
     "MarketScopeNotFound",

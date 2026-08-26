@@ -14,6 +14,7 @@ from .api import (
     assets_router,
     commentaries_router,
     exchange_rates_router,
+    information_router,
     market_scopes_router,
     portfolios_router,
     strategies_router,
@@ -34,6 +35,7 @@ from .services import (
     AssetNotFound,
     CommentaryNotFound,
     ExchangeRateUnavailable,
+    InformationNotFound,
     InvalidTrade,
     MarketScopeInUse,
     MarketScopeNotFound,
@@ -141,6 +143,7 @@ def create_app(
 
     @app.exception_handler(AssetNotFound)
     @app.exception_handler(CommentaryNotFound)
+    @app.exception_handler(InformationNotFound)
     @app.exception_handler(StrategyNotFound)
     @app.exception_handler(TagNotFound)
     @app.exception_handler(MarketScopeNotFound)
@@ -168,6 +171,7 @@ def create_app(
     app.include_router(assets_router, prefix="/api/v1")
     app.include_router(commentaries_router, prefix="/api/v1")
     app.include_router(exchange_rates_router, prefix="/api/v1")
+    app.include_router(information_router, prefix="/api/v1")
     app.include_router(market_scopes_router, prefix="/api/v1")
     app.include_router(portfolios_router, prefix="/api/v1")
     app.include_router(strategies_router, prefix="/api/v1")

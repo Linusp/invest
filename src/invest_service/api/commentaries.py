@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -11,8 +11,13 @@ from ..models import (
     CommentarySource,
     CommentarySubjectType,
 )
-from ..schemas import CommentaryCreate, CommentaryRead, CommentaryRevisionCreate
-from ..services import CommentaryService
+from ..schemas import (
+    CommentaryCreate,
+    CommentaryRead,
+    CommentaryRevisionCreate,
+    InformationRead,
+)
+from ..services import CommentaryService, InformationService
 
 router = APIRouter(prefix="/commentaries", tags=["commentaries"])
 DB = Annotated[Session, Depends(get_db)]
@@ -23,6 +28,13 @@ def get_commentary_service(db: DB) -> CommentaryService:
 
 
 Service = Annotated[CommentaryService, Depends(get_commentary_service)]
+
+
+def get_information_service(db: DB) -> InformationService:
+    return InformationService(db)
+
+
+Information = Annotated[InformationService, Depends(get_information_service)]
 
 
 @router.get("", response_model=list[CommentaryRead])
@@ -76,3 +88,30 @@ def revise_commentary(
     commentary_id: str, data: CommentaryRevisionCreate, service: Service
 ):
     return service.revise(commentary_id, data)
+
+
+@router.get("/{commentary_id}/information", response_model=list[InformationRead])
+def list_commentary_information(commentary_id: str, information: Information):
+    return information.for_commentary(commentary_id)
+
+
+@router.post(
+    "/{commentary_id}/information/{information_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def link_commentary_information(
+    commentary_id: str, information_id: str, information: Information
+):
+    information.link_commentary(commentary_id, information_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/{commentary_id}/information/{information_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def unlink_commentary_information(
+    commentary_id: str, information_id: str, information: Information
+):
+    information.unlink_commentary(commentary_id, information_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

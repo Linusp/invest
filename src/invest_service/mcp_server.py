@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -13,6 +13,7 @@ from .models import (
     AssetCategory,
     CommentarySource,
     CommentarySubjectType,
+    InformationType,
     MarketScopeType,
     TradeType,
 )
@@ -23,6 +24,8 @@ from .schemas import (
     AssetTagsUpdate,
     CommentaryCreate,
     CommentaryRevisionCreate,
+    InformationAssetRef,
+    InformationCreate,
     MarketScopeCreate,
     MarketScopeRead,
     MarketScopeUpdate,
@@ -37,6 +40,7 @@ from .schemas import (
 )
 from .services import (
     CommentaryService,
+    InformationService,
     MarketScopeService,
     MarketService,
     StrategyService,
@@ -82,6 +86,9 @@ def build_mcp(
 
     def commentaries(session):
         return CommentaryService(session)
+
+    def information(session):
+        return InformationService(session)
 
     @mcp.tool()
     def search_assets(query: str, category: str | None = None, limit: int = 15) -> list[dict]:
@@ -480,6 +487,129 @@ def build_mcp(
             return _commentary_for_mcp(commentary, output_format)
 
     @mcp.tool()
+    def submit_information(
+        title: str,
+        source_name: str,
+        url: str,
+        published_at: str,
+        content: dict[str, Any] | str,
+        information_type: str,
+        summary: str | None = None,
+        content_format: str = "structured",
+        language: str = "zh-CN",
+        search_context: str | None = None,
+        content_fingerprint: str | None = None,
+        importance: int = 3,
+        confidence: float | None = None,
+        market_scope_codes: list[str] | None = None,
+        assets: list[dict[str, str]] | None = None,
+        output_format: str = "markdown",
+    ) -> dict:
+        """Submit externally discovered information without fetching it in Invest."""
+        payload = InformationCreate(
+            title=title,
+            source_name=source_name,
+            url=url,
+            published_at=datetime.fromisoformat(published_at),
+            summary=summary,
+            content=content,
+            content_format=content_format,
+            language=language,
+            information_type=InformationType(information_type),
+            search_context=search_context,
+            content_fingerprint=content_fingerprint,
+            importance=importance,
+            confidence=Decimal(str(confidence)) if confidence is not None else None,
+            market_scope_codes=market_scope_codes or [],
+            assets=[InformationAssetRef(**item) for item in assets or []],
+        )
+        with session_factory() as database_session:
+            item = information(database_session).submit(payload)
+            return _information_for_mcp(item, output_format)
+
+    @mcp.tool()
+    def list_information(
+        market_scope_code: str | None = None,
+        asset_symbol: str | None = None,
+        asset_category: str | None = None,
+        published_from: str | None = None,
+        published_to: str | None = None,
+        source_name: str | None = None,
+        information_type: str | None = None,
+        query: str | None = None,
+        min_importance: int | None = None,
+        referenced: bool | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        output_format: str = "markdown",
+    ) -> list[dict]:
+        """Filter submitted information by object, time, source, type or text."""
+        with session_factory() as database_session:
+            items = information(database_session).list(
+                market_scope_code=market_scope_code,
+                asset_symbol=asset_symbol,
+                asset_category=(
+                    AssetCategory(asset_category) if asset_category else None
+                ),
+                published_from=(
+                    datetime.fromisoformat(published_from)
+                    if published_from
+                    else None
+                ),
+                published_to=(
+                    datetime.fromisoformat(published_to) if published_to else None
+                ),
+                source_name=source_name,
+                information_type=(
+                    InformationType(information_type) if information_type else None
+                ),
+                query=query,
+                min_importance=min_importance,
+                referenced=referenced,
+                limit=limit,
+                offset=offset,
+            )
+            return [_information_for_mcp(item, output_format) for item in items]
+
+    @mcp.tool()
+    def get_information(
+        information_id: str, output_format: str = "markdown"
+    ) -> dict:
+        """Get one submitted information record."""
+        with session_factory() as database_session:
+            item = information(database_session).get(information_id)
+            return _information_for_mcp(item, output_format)
+
+    @mcp.tool()
+    def link_information_to_commentary(
+        commentary_id: str, information_id: str
+    ) -> None:
+        """Use an information record as evidence for a commentary."""
+        with session_factory() as database_session:
+            information(database_session).link_commentary(
+                commentary_id, information_id
+            )
+
+    @mcp.tool()
+    def unlink_information_from_commentary(
+        commentary_id: str, information_id: str
+    ) -> None:
+        """Remove an information reference from a commentary."""
+        with session_factory() as database_session:
+            information(database_session).unlink_commentary(
+                commentary_id, information_id
+            )
+
+    @mcp.tool()
+    def list_commentary_information(
+        commentary_id: str, output_format: str = "markdown"
+    ) -> list[dict]:
+        """List information cited by a commentary."""
+        with session_factory() as database_session:
+            items = information(database_session).for_commentary(commentary_id)
+            return [_information_for_mcp(item, output_format) for item in items]
+
+    @mcp.tool()
     def create_portfolio(
         name: str,
         description: str | None = None,
@@ -751,6 +881,17 @@ def _commentary_for_mcp(commentary, output_format: str) -> dict:
     if output_format not in {"markdown", "structured"}:
         raise ValueError("output_format must be markdown or structured")
     payload = commentary.model_dump(mode="json")
+    markdown = payload.pop("content_markdown")
+    payload.pop("content_html")
+    if output_format == "markdown":
+        payload["content"] = markdown
+    return payload
+
+
+def _information_for_mcp(information, output_format: str) -> dict:
+    if output_format not in {"markdown", "structured"}:
+        raise ValueError("output_format must be markdown or structured")
+    payload = information.model_dump(mode="json")
     markdown = payload.pop("content_markdown")
     payload.pop("content_html")
     if output_format == "markdown":

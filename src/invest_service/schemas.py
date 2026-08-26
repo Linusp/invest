@@ -9,6 +9,7 @@ from .models import (
     AssetCategory,
     CommentarySource,
     CommentarySubjectType,
+    InformationType,
     MarketScopeType,
     TradeType,
 )
@@ -140,6 +141,70 @@ class CommentaryRead(APIModel):
     has_risk: bool
     has_trade_plan: bool
     revises_id: str | None
+    created_at: datetime
+
+
+class InformationAssetRef(APIModel):
+    symbol: str = Field(min_length=1, max_length=32)
+    category: AssetCategory
+
+
+class InformationCreate(APIModel):
+    title: str = Field(min_length=1, max_length=500)
+    source_name: str = Field(min_length=1, max_length=255)
+    url: str = Field(min_length=1, max_length=4096)
+    published_at: datetime
+    summary: str | None = None
+    content: dict[str, Any] | str
+    content_format: Literal["structured", "markdown", "html"] = "structured"
+    full_content: dict[str, Any] | str | None = None
+    full_content_format: Literal["structured", "markdown", "html"] = "structured"
+    language: str = Field(default="zh-CN", min_length=2, max_length=16)
+    information_type: InformationType
+    search_context: str | None = None
+    content_fingerprint: str | None = Field(default=None, min_length=16, max_length=64)
+    importance: int = Field(default=3, ge=1, le=5)
+    confidence: Decimal | None = Field(default=None, ge=0, le=1)
+    market_scope_codes: list[str] = Field(default_factory=list, max_length=100)
+    assets: list[InformationAssetRef] = Field(default_factory=list, max_length=100)
+
+    @field_validator("market_scope_codes")
+    @classmethod
+    def validate_market_scope_codes(cls, values: list[str]) -> list[str]:
+        normalized = [normalize_market_scope_code(value) for value in values]
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("market_scope_codes must not contain duplicates")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_assets(self):
+        identities = {(item.category, item.symbol.strip().upper()) for item in self.assets}
+        if len(identities) != len(self.assets):
+            raise ValueError("information assets must not contain duplicates")
+        return self
+
+
+class InformationRead(APIModel):
+    id: str
+    title: str
+    source_name: str
+    url: str
+    published_at: datetime
+    fetched_at: datetime
+    summary: str | None
+    content: dict[str, Any]
+    content_markdown: str
+    content_html: str
+    full_content: dict[str, Any] | None
+    language: str
+    information_type: InformationType
+    search_context: str | None
+    content_fingerprint: str
+    importance: int
+    confidence: Decimal | None
+    market_scope_codes: list[str]
+    assets: list[InformationAssetRef]
+    is_referenced: bool
     created_at: datetime
 
 

@@ -68,6 +68,14 @@ class CommentarySource(str, enum.Enum):
     SYSTEM = "system"
 
 
+class InformationType(str, enum.Enum):
+    NEWS = "news"
+    ANNOUNCEMENT = "announcement"
+    RESEARCH = "research"
+    MACRO = "macro"
+    EVENT = "event"
+
+
 def asset_identity(category: AssetCategory | str, symbol: str) -> str:
     category_value = (
         category.value
@@ -122,6 +130,57 @@ asset_tags = Table(
     ),
     Column("favorite_since", Date, nullable=True, default=date.today),
     Column("favorite_price", Numeric(20, 6), nullable=True),
+)
+
+information_market_scopes = Table(
+    "information_market_scopes",
+    Base.metadata,
+    Column(
+        "information_id",
+        String(36),
+        ForeignKey("information.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "market_scope_code",
+        String(128),
+        ForeignKey("market_scopes.code", ondelete="RESTRICT"),
+        primary_key=True,
+    ),
+)
+
+information_assets = Table(
+    "information_assets",
+    Base.metadata,
+    Column(
+        "information_id",
+        String(36),
+        ForeignKey("information.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "asset_symbol",
+        String(32),
+        ForeignKey("assets.symbol", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+commentary_information = Table(
+    "commentary_information",
+    Base.metadata,
+    Column(
+        "commentary_id",
+        String(36),
+        ForeignKey("commentaries.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "information_id",
+        String(36),
+        ForeignKey("information.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
 
@@ -344,6 +403,47 @@ class Commentary(Base):
     )
 
     asset: Mapped[Asset | None] = relationship()
+
+
+class Information(Base):
+    __tablename__ = "information"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    title: Mapped[str] = mapped_column(String(500), index=True)
+    source_name: Mapped[str] = mapped_column(String(255), index=True)
+    url: Mapped[str] = mapped_column(Text)
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    summary: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[dict] = mapped_column(JSON)
+    full_content: Mapped[dict | None] = mapped_column(JSON)
+    language: Mapped[str] = mapped_column(String(16), default="zh-CN")
+    information_type: Mapped[InformationType] = mapped_column(
+        Enum(InformationType, native_enum=False), index=True
+    )
+    search_context: Mapped[str | None] = mapped_column(Text)
+    content_fingerprint: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True
+    )
+    importance: Mapped[int] = mapped_column(Integer, default=3, index=True)
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+
+    market_scopes: Mapped[list[MarketScope]] = relationship(
+        secondary=information_market_scopes, lazy="selectin"  # codespell:ignore selectin
+    )
+    assets: Mapped[list[Asset]] = relationship(
+        secondary=information_assets, lazy="selectin"  # codespell:ignore selectin
+    )
+    commentaries: Mapped[list[Commentary]] = relationship(
+        secondary=commentary_information, lazy="selectin"  # codespell:ignore selectin
+    )
 
 
 class OpeningSnapshot(Base):
