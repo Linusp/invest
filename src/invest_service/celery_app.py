@@ -1,4 +1,5 @@
 import logging
+from datetime import date, datetime, timezone
 from typing import Any
 
 from celery import Celery
@@ -8,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from .config import Settings, get_settings
 from .database import Base, SessionLocal, engine
-from .models import AssetCategory
+from .models import AssetCategory, MarketBar, TradePlan, TradePlanStatus
 from .providers import (
     EcbExchangeRateProvider,
     MarketDataProvider,
@@ -17,6 +18,7 @@ from .providers import (
 )
 from .schema_compat import migrate_legacy_data, prepare_legacy_schema
 from .services import ExchangeRateService, MarketService
+from .services.trade_plan_evaluator import evaluate_plan
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,11 @@ def build_beat_schedule(settings: Settings) -> dict[str, dict[str, Any]]:
                 minute=10,
             ),
             "options": {"expires": 12 * 60 * 60},
+        },
+        "evaluate-trade-plans": {
+            "task": "invest.evaluate_trade_plans",
+            "schedule": interval_seconds,
+            "options": {"expires": interval_seconds},
         },
     }
 
@@ -155,6 +162,60 @@ def run_search_index_update(
     }
 
 
+def run_trade_plan_evaluation(
+    session_factory: sessionmaker, as_of=None
+) -> dict[str, int]:
+    evaluation_date = as_of or date.today()
+    triggered = 0
+    scanned = 0
+    with session_factory() as session:
+        plans = list(
+            session.query(TradePlan)
+            .filter(TradePlan.status == TradePlanStatus.ACTIVE)
+            .all()
+        )
+        for plan in plans:
+            if plan.valid_from and evaluation_date < plan.valid_from:
+                continue
+            if plan.valid_until and evaluation_date > plan.valid_until:
+                plan.status = TradePlanStatus.EXPIRED
+                continue
+            bars = list(
+                session.query(MarketBar)
+                .filter(
+                    MarketBar.asset_key == plan.asset_key,
+                    MarketBar.trade_date <= evaluation_date,
+                )
+                .order_by(MarketBar.trade_date.asc())
+                .all()
+            )
+            scanned += 1
+            result = evaluate_plan(
+                {
+                    "logic": plan.logic.value,
+                    "confirm_days": plan.confirm_days,
+                    "conditions": plan.conditions,
+                },
+                [
+                    {
+                        "trade_date": bar.trade_date,
+                        "close": bar.close,
+                        "change_percent": bar.change_percent,
+                        "volume": bar.volume,
+                        "amount": bar.amount,
+                    }
+                    for bar in bars
+                ],
+                evaluation_date,
+            )
+            if result.matched:
+                plan.status = TradePlanStatus.TRIGGERED
+                plan.triggered_at = datetime.now(timezone.utc)
+                triggered += 1
+        session.commit()
+    return {"scanned": scanned, "triggered": triggered}
+
+
 @celery_app.task(
     name="invest.update_market_data",
     soft_time_limit=MARKET_UPDATE_SOFT_TIME_LIMIT,
@@ -225,6 +286,11 @@ def update_search_index() -> dict[str, int]:
         SessionLocal,
         make_market_provider(current_settings),
     )
+
+
+@celery_app.task(name="invest.evaluate_trade_plans")
+def evaluate_trade_plans() -> dict[str, int]:
+    return run_trade_plan_evaluation(SessionLocal)
 
 
 def run_worker() -> None:
