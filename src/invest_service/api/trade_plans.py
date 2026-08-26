@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import AssetCategory, TradePlanStatus
+from ..models import AssetCategory, TradePlanAction, TradePlanStatus
 from ..schemas import (
     TradePlanCreate,
     TradePlanRead,
@@ -35,12 +35,13 @@ def list_trade_plans(
     asset_symbol: str | None = None,
     asset_category: AssetCategory | None = None,
     status: TradePlanStatus | None = None,
+    action: TradePlanAction | None = None,
     as_of: date | None = None,
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
 ):
     return service.list(
-        portfolio_id, asset_symbol, asset_category, status, as_of, limit, offset
+        portfolio_id, asset_symbol, asset_category, status, as_of, limit, offset, action
     )
 
 

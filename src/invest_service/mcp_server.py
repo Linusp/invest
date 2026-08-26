@@ -671,20 +671,22 @@ def build_mcp(
         asset_symbol: str | None = None,
         asset_category: str | None = None,
         status: str | None = None,
+        action: str | None = None,
         as_of: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict]:
-        """List plans by portfolio, asset, status or effective date."""
+        """List plans by portfolio, asset, action, status or effective date."""
         with session_factory() as database_session:
             items = trade_plans(database_session).list(
-                portfolio_id,
-                asset_symbol,
-                AssetCategory(asset_category) if asset_category else None,
-                TradePlanStatus(status) if status else None,
-                date.fromisoformat(as_of) if as_of else None,
-                limit,
-                offset,
+                portfolio_id=portfolio_id,
+                asset_symbol=asset_symbol,
+                asset_category=AssetCategory(asset_category) if asset_category else None,
+                status=TradePlanStatus(status) if status else None,
+                as_of=date.fromisoformat(as_of) if as_of else None,
+                limit=limit,
+                offset=offset,
+                action=TradePlanAction(action) if action else None,
             )
             return [_json(item.model_dump(mode="json")) for item in items]
 
@@ -706,25 +708,35 @@ def build_mcp(
         amount: float | None = None,
         position_ratio: float | None = None,
         confirm_days: int | None = None,
+        valid_from: str | None = None,
+        valid_until: str | None = None,
         reason: str | None = None,
         risk_note: str | None = None,
+        source_commentary_id: str | None = None,
     ) -> dict:
         """Modify a draft trade plan."""
-        payload = TradePlanUpdate(
-            action=TradePlanAction(action) if action else None,
-            logic=TradePlanLogic(logic) if logic else None,
-            conditions=[TradePlanCondition(**item) for item in conditions]
-            if conditions is not None
-            else None,
-            quantity=Decimal(str(quantity)) if quantity is not None else None,
-            amount=Decimal(str(amount)) if amount is not None else None,
-            position_ratio=(
+        changes = {
+            "action": TradePlanAction(action) if action else None,
+            "logic": TradePlanLogic(logic) if logic else None,
+            "conditions": (
+                [TradePlanCondition(**item) for item in conditions]
+                if conditions is not None else None
+            ),
+            "quantity": Decimal(str(quantity)) if quantity is not None else None,
+            "amount": Decimal(str(amount)) if amount is not None else None,
+            "position_ratio": (
                 Decimal(str(position_ratio)) if position_ratio is not None else None
             ),
-            confirm_days=confirm_days,
-            reason=reason,
-            risk_note=risk_note,
-        )
+            "confirm_days": confirm_days,
+            "valid_from": date.fromisoformat(valid_from) if valid_from else None,
+            "valid_until": date.fromisoformat(valid_until) if valid_until else None,
+            "reason": reason,
+            "risk_note": risk_note,
+            "source_commentary_id": source_commentary_id,
+        }
+        payload = TradePlanUpdate(**{
+            key: value for key, value in changes.items() if value is not None
+        })
         with session_factory() as database_session:
             return _json(
                 trade_plans(database_session).update(plan_id, payload).model_dump(mode="json")

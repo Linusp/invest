@@ -52,6 +52,8 @@ def test_trade_plan_crud_allows_multiple_plans_and_safe_status_flow(client):
     )
     assert second.status_code == 201
     assert second.json()["id"] != plan["id"]
+    sell_plans = client.get("/api/v1/trade-plans", params={"action": "sell"})
+    assert [item["id"] for item in sell_plans.json()] == [second.json()["id"]]
 
     activated = client.post(
         f"/api/v1/trade-plans/{plan['id']}/status", json={"status": "active"}
@@ -120,10 +122,25 @@ def test_trade_plan_mcp_uses_same_contract(session_factory, provider):
             "action": "buy",
             "conditions": [{"type": "price_lte", "value": 90}],
             "quantity": 10,
-            "status": "active",
+            "status": "draft",
         },
     )
-    assert created["status"] == "active"
+    assert created["asset_name"] == "浦发银行"
+    updated = _call_tool(
+        mcp,
+        "update_trade_plan",
+        {"plan_id": created["id"], "valid_from": "2026-09-01", "reason": "等待回调"},
+    )
+    assert updated["valid_from"] == "2026-09-01"
+    assert updated["reason"] == "等待回调"
+    assert updated["quantity"] == "10.000000"
+    listed = _call_tool(mcp, "list_trade_plans", {"action": "buy"})
+    assert [item["id"] for item in listed] == [created["id"]]
+    assert _call_tool(
+        mcp,
+        "change_trade_plan_status",
+        {"plan_id": created["id"], "status": "active"},
+    )["status"] == "active"
     assert _call_tool(
         mcp,
         "change_trade_plan_status",

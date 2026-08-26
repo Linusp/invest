@@ -11,6 +11,7 @@ from ..models import (
     Commentary,
     Strategy,
     TradePlan,
+    TradePlanAction,
     TradePlanStatus,
     TradePlanStatusEvent,
     asset_identity,
@@ -103,12 +104,15 @@ class TradePlanService:
         as_of: date | None = None,
         limit: int = 100,
         offset: int = 0,
+        action: TradePlanAction | None = None,
     ) -> list[TradePlanRead]:
         statement = select(TradePlan).options(selectinload(TradePlan.asset))
         if portfolio_id:
             statement = statement.where(TradePlan.portfolio_id == portfolio_id)
         if status:
             statement = statement.where(TradePlan.status == status)
+        if action:
+            statement = statement.where(TradePlan.action == action)
         if asset_symbol and asset_category:
             statement = statement.where(
                 TradePlan.asset_key == asset_identity(asset_category, asset_symbol)
@@ -134,7 +138,7 @@ class TradePlanService:
         plan = self._load(plan_id)
         if plan.status != TradePlanStatus.DRAFT:
             raise InvalidTradePlan("only draft trade plans can be edited")
-        values = data.model_dump(exclude_unset=True, mode="json")
+        values = data.model_dump(exclude_unset=True, mode="python")
         for field, value in values.items():
             if field == "conditions":
                 value = [item.model_dump(mode="json") for item in data.conditions or []]
