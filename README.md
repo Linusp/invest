@@ -36,6 +36,7 @@ make test
 - [开发与部署指南](docs/guide.md)
 - [REST API 参考](docs/api.md)
 - [行情源、搜索索引与定时任务](docs/market-data.md)
+- [组合、点评与交易计划需求文档（已 Review）](docs/portfolio-commentary-trade-plan-prd.md)
 
 ## 常用命令
 
