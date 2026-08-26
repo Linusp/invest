@@ -193,6 +193,7 @@ def test_web_strategy_page_uses_server_api(client):
     assert 'id="portfolio-commentary"' in page.text
     assert 'subject_type: "portfolio"' in page.text
     assert 'id="trade-plans"' in page.text
+    assert 'id="trade-plans" class="panel" hidden' in page.text
     assert 'api("/trade-plans' in page.text
     assert "/static/commentary.js" in page.text
     assert "localStorage" not in page.text
