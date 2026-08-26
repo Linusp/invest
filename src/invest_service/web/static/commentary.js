@@ -32,6 +32,7 @@
         let items = [];
         let page = 1;
         let pageSize = 20;
+        let sortValue = "date:desc";
         root.innerHTML = `
             <section class="panel commentary-panel">
                 <div class="commentary-toolbar">
@@ -40,11 +41,10 @@
                             <option value="">全部时段</option>
                             ${Object.entries(sessionLabels).map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}
                         </select>
-                        <select class="input commentary-sort" aria-label="排序"><option value="date:desc">日期 ↓</option><option value="date:asc">日期 ↑</option><option value="title:asc">标题 ↑</option><option value="title:desc">标题 ↓</option></select>
                         <select class="input commentary-page-size" aria-label="每页条数"><option>10</option><option selected>20</option><option>50</option></select>
                         <button class="button primary commentary-add" type="button"><i data-lucide="message-square-plus"></i><span>添加</span></button>
                 </div>
-                <div class="table-wrap"><table class="data-table commentary-table"><thead><tr><th>日期</th><th>时段</th><th>标题</th><th>摘要</th><th>来源</th></tr></thead><tbody class="commentary-list"><tr><td colspan="5"><div class="empty-state compact">请选择分析对象</div></td></tr></tbody></table></div>
+                <div class="table-wrap"><table class="data-table commentary-table"><thead><tr><th><button class="table-sort" data-commentary-sort="date">日期</button></th><th><button class="table-sort" data-commentary-sort="session">时段</button></th><th><button class="table-sort" data-commentary-sort="title">标题</button></th><th><button class="table-sort" data-commentary-sort="summary">摘要</button></th><th><button class="table-sort" data-commentary-sort="source">来源</button></th></tr></thead><tbody class="commentary-list"><tr><td colspan="5"><div class="empty-state compact">请选择分析对象</div></td></tr></tbody></table></div>
                 <div class="list-pager commentary-pager"></div>
             </section>
             <dialog id="${id}-dialog" class="dialog-wide">
@@ -76,7 +76,6 @@
         const form = dialog.querySelector("form");
         const filter = root.querySelector(".commentary-session-filter");
         const query = root.querySelector(".commentary-query");
-        const sort = root.querySelector(".commentary-sort");
         const size = root.querySelector(".commentary-page-size");
         const pager = root.querySelector(".commentary-pager");
 
@@ -94,13 +93,14 @@
 
         function render() {
             const term = query.value.trim().toLowerCase();
-            const [sortField, direction] = sort.value.split(":");
+            const [sortField, direction] = sortValue.split(":");
             const filtered = items.filter(item =>
                 (!filter.value || item.session === filter.value)
                 && (!term || `${item.title} ${item.summary || ""}`.toLowerCase().includes(term)))
                 .sort((left, right) => {
-                    const leftValue = sortField === "title" ? left.title : left.trading_date;
-                    const rightValue = sortField === "title" ? right.title : right.trading_date;
+                    const values = {date: "trading_date", session: "session", title: "title", summary: "summary", source: "source"};
+                    const leftValue = left[values[sortField]] || "";
+                    const rightValue = right[values[sortField]] || "";
                     return String(leftValue).localeCompare(String(rightValue), "zh-CN") * (direction === "desc" ? -1 : 1);
                 });
             const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -134,6 +134,11 @@
                 page += button.dataset.page === "next" ? 1 : -1;
                 render();
             }));
+            root.querySelectorAll("[data-commentary-sort]").forEach(button => {
+                const active = button.dataset.commentarySort === sortField;
+                button.classList.toggle("active", active);
+                button.dataset.direction = active ? direction : "";
+            });
         }
 
         async function save(event) {
@@ -166,7 +171,13 @@
         root.querySelectorAll(".commentary-close").forEach(button =>
             button.addEventListener("click", () => dialog.close())
         );
-        [filter, sort].forEach(control => control.addEventListener("change", () => { page = 1; render(); }));
+        filter.addEventListener("change", () => { page = 1; render(); });
+        root.querySelectorAll("[data-commentary-sort]").forEach(button => button.addEventListener("click", () => {
+            const [field, direction] = sortValue.split(":");
+            sortValue = `${button.dataset.commentarySort}:${field === button.dataset.commentarySort && direction === "asc" ? "desc" : "asc"}`;
+            page = 1;
+            render();
+        }));
         query.addEventListener("input", () => { page = 1; render(); });
         size.addEventListener("change", () => { pageSize = Number(size.value); page = 1; render(); });
         form.addEventListener("submit", save);

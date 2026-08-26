@@ -66,32 +66,32 @@
             </div>
 
             <div id="positions-tab">
-                <div class="list-toolbar"><input id="positions-query" class="input" type="search" placeholder="筛选标的"><select id="positions-sort" class="input"><option value="asset:asc">标的 ↑</option><option value="asset:desc">标的 ↓</option><option value="market:desc">市值 ↓</option><option value="market:asc">市值 ↑</option><option value="profit:desc">浮动盈亏 ↓</option><option value="profit:asc">浮动盈亏 ↑</option></select><select id="positions-page-size" class="input page-size"><option>10</option><option selected>20</option><option>50</option></select></div>
+                <div class="list-toolbar"><input id="positions-query" class="input" type="search" placeholder="筛选标的"><select id="positions-page-size" class="input page-size"><option>10</option><option selected>20</option><option>50</option></select></div>
                 <div class="table-wrap"><table class="data-table">
                     <thead><tr>
-                        <th>标的</th><th class="text-right">数量</th><th class="text-right">平均成本</th>
-                        <th class="text-right">最新价</th><th class="text-right">市值</th>
-                        <th class="text-right">已实现</th><th class="text-right">浮动盈亏</th>
+                        <th><button class="table-sort" data-sort-table="positions" data-sort-field="asset">标的</button></th><th class="text-right"><button class="table-sort" data-sort-table="positions" data-sort-field="quantity">数量</button></th><th class="text-right"><button class="table-sort" data-sort-table="positions" data-sort-field="cost">平均成本</button></th>
+                        <th class="text-right"><button class="table-sort" data-sort-table="positions" data-sort-field="latest">最新价</button></th><th class="text-right"><button class="table-sort" data-sort-table="positions" data-sort-field="market">市值</button></th>
+                        <th class="text-right"><button class="table-sort" data-sort-table="positions" data-sort-field="realized">已实现</button></th><th class="text-right"><button class="table-sort" data-sort-table="positions" data-sort-field="profit">浮动盈亏</button></th>
                     </tr></thead>
                     <tbody id="positions-body"></tbody>
                 </table></div><div id="positions-pager" class="list-pager"></div>
             </div>
 
             <div id="trades-tab" hidden>
-                <div class="list-toolbar"><input id="trades-query" class="input" type="search" placeholder="筛选标的或备注"><select id="trades-type" class="input"><option value="">全部类型</option><option value="buy">买入</option><option value="sell">卖出</option><option value="deposit">入金</option><option value="withdraw">出金</option></select><select id="trades-sort" class="input"><option value="date:desc">日期 ↓</option><option value="date:asc">日期 ↑</option><option value="amount:desc">金额 ↓</option><option value="amount:asc">金额 ↑</option></select><select id="trades-page-size" class="input page-size"><option>10</option><option selected>20</option><option>50</option></select></div>
+                <div class="list-toolbar"><input id="trades-query" class="input" type="search" placeholder="筛选标的或备注"><select id="trades-type" class="input"><option value="">全部类型</option><option value="buy">买入</option><option value="sell">卖出</option><option value="deposit">入金</option><option value="withdraw">出金</option></select><select id="trades-page-size" class="input page-size"><option>10</option><option selected>20</option><option>50</option></select></div>
                 <div class="table-wrap"><table class="data-table">
                     <thead><tr>
-                        <th>日期</th><th>类型</th><th>标的</th><th>持仓 ID</th><th class="text-right">价格 / 金额</th>
-                        <th class="text-right">数量</th><th class="text-right">费用</th><th>备注</th>
+                        <th><button class="table-sort" data-sort-table="trades" data-sort-field="date">日期</button></th><th><button class="table-sort" data-sort-table="trades" data-sort-field="type">类型</button></th><th><button class="table-sort" data-sort-table="trades" data-sort-field="asset">标的</button></th><th><button class="table-sort" data-sort-table="trades" data-sort-field="position">持仓 ID</button></th><th class="text-right"><button class="table-sort" data-sort-table="trades" data-sort-field="amount">价格 / 金额</button></th>
+                        <th class="text-right"><button class="table-sort" data-sort-table="trades" data-sort-field="quantity">数量</button></th><th class="text-right"><button class="table-sort" data-sort-table="trades" data-sort-field="fee">费用</button></th><th><button class="table-sort" data-sort-table="trades" data-sort-field="note">备注</button></th>
                     </tr></thead>
                     <tbody id="trades-body"></tbody>
                 </table></div><div id="trades-pager" class="list-pager"></div>
             </div>
             <div id="commentary-tab" hidden><div id="portfolio-commentary"></div></div>
             <div id="trade-plans-tab" hidden>
-              <div class="list-toolbar"><input id="plans-query" class="input" type="search" placeholder="筛选标的或条件"><select id="plans-action" class="input"><option value="">全部动作</option><option value="buy">买入</option><option value="sell">卖出</option></select><select id="plans-status" class="input"><option value="">全部状态</option><option value="draft">草稿</option><option value="active">生效</option><option value="triggered">待确认</option><option value="partially_executed">部分执行</option><option value="executed">已执行</option><option value="expired">已过期</option><option value="cancelled">已取消</option></select><select id="plans-sort" class="input"><option value="valid:desc">有效期 ↓</option><option value="valid:asc">有效期 ↑</option><option value="asset:asc">标的 ↑</option><option value="asset:desc">标的 ↓</option></select><select id="plans-page-size" class="input page-size"><option>10</option><option selected>20</option><option>50</option></select></div>
+              <div class="list-toolbar"><input id="plans-query" class="input" type="search" placeholder="筛选标的或条件"><select id="plans-action" class="input"><option value="">全部动作</option><option value="buy">买入</option><option value="sell">卖出</option></select><select id="plans-status" class="input"><option value="">全部状态</option><option value="draft">草稿</option><option value="active">生效</option><option value="triggered">待确认</option><option value="partially_executed">部分执行</option><option value="executed">已执行</option><option value="expired">已过期</option><option value="cancelled">已取消</option></select><select id="plans-page-size" class="input page-size"><option>10</option><option selected>20</option><option>50</option></select></div>
               <div id="trade-plans" class="trade-plans" hidden>
-                <div class="table-wrap"><table class="data-table"><thead><tr><th>标的</th><th>动作</th><th>条件</th><th>规模</th><th>有效期</th><th>状态</th></tr></thead><tbody id="trade-plans-body"></tbody></table></div>
+                <div class="table-wrap"><table class="data-table"><thead><tr><th><button class="table-sort" data-sort-table="plans" data-sort-field="asset">标的</button></th><th><button class="table-sort" data-sort-table="plans" data-sort-field="action">动作</button></th><th><button class="table-sort" data-sort-table="plans" data-sort-field="condition">条件</button></th><th><button class="table-sort" data-sort-table="plans" data-sort-field="size">规模</button></th><th><button class="table-sort" data-sort-table="plans" data-sort-field="valid">有效期</button></th><th><button class="table-sort" data-sort-table="plans" data-sort-field="status">状态</button></th></tr></thead><tbody id="trade-plans-body"></tbody></table></div>
               </div>
               <div id="trade-plans-empty" class="empty-state compact" hidden>暂无交易计划</div>
               <div id="plans-pager" class="list-pager"></div>
@@ -304,7 +304,7 @@
 </dialog>
 {% endblock %}
 {% block scripts %}
-<script src="/static/commentary.js?v=20260826-3"></script>
+<script src="/static/commentary.js?v=20260826-4"></script>
 <script>
 (() => {
     const state = {
@@ -314,7 +314,9 @@
         snapshotSearchTimer: null, plans: [],
     };
     const listViews = {
-        positions: {page: 1, size: 20}, trades: {page: 1, size: 20}, plans: {page: 1, size: 20},
+        positions: {page: 1, size: 20, sort: "asset:asc"},
+        trades: {page: 1, size: 20, sort: "date:desc"},
+        plans: {page: 1, size: 20, sort: "valid:desc"},
     };
     const $ = (id) => document.getElementById(id);
     const commentaryTimeline = window.CommentaryTimeline.mount({
@@ -351,6 +353,15 @@
             view.page += button.dataset.page === "next" ? 1 : -1;
             render();
         }));
+    }
+
+    function updateSortHeaders(name) {
+        const [field, direction] = listViews[name].sort.split(":");
+        document.querySelectorAll(`[data-sort-table="${name}"]`).forEach(button => {
+            const active = button.dataset.sortField === field;
+            button.classList.toggle("active", active);
+            button.dataset.direction = active ? direction : "";
+        });
     }
 
     function renderStrategies() {
@@ -414,7 +425,12 @@
             (!query || `${plan.asset_symbol} ${plan.conditions.map(item => item.label || item.type).join(" ")}`.toLowerCase().includes(query))
             && (!$("plans-action").value || plan.action === $("plans-action").value)
             && (!$("plans-status").value || plan.status === $("plans-status").value));
-        plans = sortList(plans, $("plans-sort").value, {asset: item => item.asset_symbol, valid: item => item.valid_until || ""});
+        plans = sortList(plans, listViews.plans.sort, {
+            asset: item => item.asset_symbol, action: item => item.action,
+            condition: item => item.conditions.map(value => value.label || value.type).join(" "),
+            size: item => Number(item.quantity ?? item.amount ?? item.position_ratio ?? 0),
+            valid: item => item.valid_until || "", status: item => item.status,
+        });
         const result = pageList(plans, listViews.plans);
         $("trade-plans").hidden = plans.length === 0;
         $("trade-plans-empty").hidden = plans.length !== 0;
@@ -425,6 +441,7 @@
                 <td class="sensitive">${plan.quantity != null ? `数量 ${number(plan.quantity, 6)}` : plan.amount != null ? `金额 ${money(plan.amount, state.detail.summary.reporting_currency)}` : `仓位 ${(Number(plan.position_ratio) * 100).toFixed(2)}%`}</td>
                 <td>${plan.valid_from || "--"} 至 ${plan.valid_until || "--"}</td><td><span class="badge ${plan.status}">${planLabels[plan.status] || plan.status}</span></td></tr>`).join("") : '<tr><td colspan="6"><div class="empty-state compact">暂无交易计划</div></td></tr>';
         renderPager("plans-pager", plans.length, listViews.plans, result.pages, renderTradePlans);
+        updateSortHeaders("plans");
     }
 
     function showDetail(visible) {
@@ -479,9 +496,11 @@
     function renderPositions() {
         const query = $("positions-query").value.trim().toLowerCase();
         let rows = state.detail.positions.filter(position => !query || `${position.asset.name} ${position.asset.symbol}`.toLowerCase().includes(query));
-        rows = sortList(rows, $("positions-sort").value, {
-            asset: item => item.asset.name, market: item => item.market_value_report,
-            profit: item => item.unrealized_profit_report,
+        rows = sortList(rows, listViews.positions.sort, {
+            asset: item => item.asset.name, quantity: item => Number(item.quantity),
+            cost: item => Number(item.average_cost), latest: item => Number(item.latest_price),
+            market: item => Number(item.market_value_report), realized: item => Number(item.realized_profit_report),
+            profit: item => Number(item.unrealized_profit_report),
         });
         const result = pageList(rows, listViews.positions);
         $("positions-body").innerHTML = result.items.length ? result.items.map(position => `
@@ -500,6 +519,7 @@
             </tr>`).join("") :
             '<tr><td colspan="7"><div class="empty-state" style="min-height:180px">暂无持仓</div></td></tr>';
         renderPager("positions-pager", rows.length, listViews.positions, result.pages, renderPositions);
+        updateSortHeaders("positions");
     }
 
     function renderTrades() {
@@ -509,7 +529,11 @@
             return (!query || `${asset?.name || ""} ${trade.asset_symbol || ""} ${trade.note || ""}`.toLowerCase().includes(query))
                 && (!$("trades-type").value || trade.type === $("trades-type").value);
         });
-        rows = sortList(rows, $("trades-sort").value, {date: item => item.trade_date, amount: item => Number(item.price) * (Number(item.quantity) || 1)});
+        rows = sortList(rows, listViews.trades.sort, {
+            date: item => item.trade_date, type: item => item.type, asset: item => item.asset_symbol,
+            position: item => item.position_id, amount: item => Number(item.price) * (Number(item.quantity) || 1),
+            quantity: item => Number(item.quantity), fee: item => Number(item.fee), note: item => item.note,
+        });
         const result = pageList(rows, listViews.trades);
         $("trades-body").innerHTML = result.items.length ? result.items.map(trade => {
             const asset = state.assets.get(`${trade.asset_category}:${trade.asset_symbol}`);
@@ -525,6 +549,7 @@
             </tr>`;
         }).join("") : '<tr><td colspan="8"><div class="empty-state" style="min-height:180px">暂无交易</div></td></tr>';
         renderPager("trades-pager", rows.length, listViews.trades, result.pages, renderTrades);
+        updateSortHeaders("trades");
     }
 
     function openStrategyDialog(editing) {
@@ -876,9 +901,16 @@
             render();
         }));
     }
-    bindListControls("positions", ["positions-query", "positions-sort", "positions-page-size"], renderPositions);
-    bindListControls("trades", ["trades-query", "trades-type", "trades-sort", "trades-page-size"], renderTrades);
-    bindListControls("plans", ["plans-query", "plans-action", "plans-status", "plans-sort", "plans-page-size"], renderTradePlans);
+    bindListControls("positions", ["positions-query", "positions-page-size"], renderPositions);
+    bindListControls("trades", ["trades-query", "trades-type", "trades-page-size"], renderTrades);
+    bindListControls("plans", ["plans-query", "plans-action", "plans-status", "plans-page-size"], renderTradePlans);
+    document.querySelectorAll("[data-sort-table]").forEach(button => button.addEventListener("click", () => {
+        const view = listViews[button.dataset.sortTable];
+        const [field, direction] = view.sort.split(":");
+        view.sort = `${button.dataset.sortField}:${field === button.dataset.sortField && direction === "asc" ? "desc" : "asc"}`;
+        view.page = 1;
+        ({positions: renderPositions, trades: renderTrades, plans: renderTradePlans})[button.dataset.sortTable]();
+    }));
     $("portfolio-info-close").addEventListener("click", () => $("portfolio-info-dialog").close());
     $("new-strategy").addEventListener("click", () => openStrategyDialog(false));
     $("empty-create").addEventListener("click", () => openStrategyDialog(false));

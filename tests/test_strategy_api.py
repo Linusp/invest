@@ -201,6 +201,10 @@ def test_web_strategy_page_uses_server_api(client):
     assert 'id="trades-type"' in page.text
     assert 'id="plans-status"' in page.text
     assert 'id="positions-pager"' in page.text
+    assert 'data-sort-table="positions"' in page.text
+    assert 'data-sort-table="trades"' in page.text
+    assert 'data-sort-table="plans"' in page.text
+    assert 'id="positions-sort"' not in page.text
     assert 'api("/trade-plans' in page.text
     assert "/static/commentary.js" in page.text
     assert "localStorage" not in page.text
