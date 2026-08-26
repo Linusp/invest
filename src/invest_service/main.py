@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from .api import (
     assets_router,
+    commentaries_router,
     exchange_rates_router,
     market_scopes_router,
     portfolios_router,
@@ -31,6 +32,7 @@ from .providers import (
 from .schema_compat import migrate_legacy_data, prepare_legacy_schema
 from .services import (
     AssetNotFound,
+    CommentaryNotFound,
     ExchangeRateUnavailable,
     InvalidTrade,
     MarketScopeInUse,
@@ -138,6 +140,7 @@ def create_app(
         return {"status": "ok"}
 
     @app.exception_handler(AssetNotFound)
+    @app.exception_handler(CommentaryNotFound)
     @app.exception_handler(StrategyNotFound)
     @app.exception_handler(TagNotFound)
     @app.exception_handler(MarketScopeNotFound)
@@ -163,6 +166,7 @@ def create_app(
         return _error_response(502, str(exc))
 
     app.include_router(assets_router, prefix="/api/v1")
+    app.include_router(commentaries_router, prefix="/api/v1")
     app.include_router(exchange_rates_router, prefix="/api/v1")
     app.include_router(market_scopes_router, prefix="/api/v1")
     app.include_router(portfolios_router, prefix="/api/v1")

@@ -8,12 +8,21 @@ from sqlalchemy.orm import sessionmaker
 
 from .config import get_settings
 from .database import SessionLocal
-from .models import AssetCategory, MarketScopeType, TradeType
+from .models import (
+    AnalysisSession,
+    AssetCategory,
+    CommentarySource,
+    CommentarySubjectType,
+    MarketScopeType,
+    TradeType,
+)
 from .providers import MarketDataProvider, make_market_provider
 from .schemas import (
     AssetCreate,
     AssetTagCreate,
     AssetTagsUpdate,
+    CommentaryCreate,
+    CommentaryRevisionCreate,
     MarketScopeCreate,
     MarketScopeRead,
     MarketScopeUpdate,
@@ -26,7 +35,12 @@ from .schemas import (
     StrategyUpdate,
     TradeCreate,
 )
-from .services import MarketScopeService, MarketService, StrategyService
+from .services import (
+    CommentaryService,
+    MarketScopeService,
+    MarketService,
+    StrategyService,
+)
 from .services.exchange_rate import ExchangeRateService
 
 
@@ -65,6 +79,9 @@ def build_mcp(
 
     def market_scopes(session):
         return MarketScopeService(session)
+
+    def commentaries(session):
+        return CommentaryService(session)
 
     @mcp.tool()
     def search_assets(query: str, category: str | None = None, limit: int = 15) -> list[dict]:
@@ -337,6 +354,132 @@ def build_mcp(
             market_scopes(session).delete(code)
 
     @mcp.tool()
+    def create_commentary(
+        subject_type: str,
+        session: str,
+        trading_date: str,
+        title: str,
+        content: dict[str, Any] | str,
+        market_scope_code: str | None = None,
+        portfolio_id: str | None = None,
+        asset_symbol: str | None = None,
+        asset_category: str | None = None,
+        summary: str | None = None,
+        content_format: str = "structured",
+        source: str = "human",
+        source_ref: str | None = None,
+        data_snapshot: dict[str, Any] | None = None,
+        has_outlook: bool = False,
+        has_risk: bool = False,
+        has_trade_plan: bool = False,
+        output_format: str = "markdown",
+    ) -> dict:
+        """Add an immutable market, portfolio or asset commentary."""
+        payload = CommentaryCreate(
+            subject_type=CommentarySubjectType(subject_type),
+            market_scope_code=market_scope_code,
+            portfolio_id=portfolio_id,
+            asset_symbol=asset_symbol,
+            asset_category=AssetCategory(asset_category) if asset_category else None,
+            session=AnalysisSession(session),
+            trading_date=date.fromisoformat(trading_date),
+            title=title,
+            summary=summary,
+            content=content,
+            content_format=content_format,
+            source=CommentarySource(source),
+            source_ref=source_ref,
+            data_snapshot=data_snapshot,
+            has_outlook=has_outlook,
+            has_risk=has_risk,
+            has_trade_plan=has_trade_plan,
+        )
+        with session_factory() as database_session:
+            commentary = commentaries(database_session).create(payload)
+            return _commentary_for_mcp(commentary, output_format)
+
+    @mcp.tool()
+    def list_commentaries(
+        subject_type: str | None = None,
+        market_scope_code: str | None = None,
+        portfolio_id: str | None = None,
+        asset_symbol: str | None = None,
+        asset_category: str | None = None,
+        session: str | None = None,
+        source: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        query: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        output_format: str = "markdown",
+    ) -> list[dict]:
+        """Query commentaries by subject, date, session, source or text."""
+        with session_factory() as database_session:
+            items = commentaries(database_session).list(
+                subject_type=(
+                    CommentarySubjectType(subject_type) if subject_type else None
+                ),
+                market_scope_code=market_scope_code,
+                portfolio_id=portfolio_id,
+                asset_symbol=asset_symbol,
+                asset_category=(
+                    AssetCategory(asset_category) if asset_category else None
+                ),
+                analysis_session=AnalysisSession(session) if session else None,
+                source=CommentarySource(source) if source else None,
+                start_date=date.fromisoformat(start_date) if start_date else None,
+                end_date=date.fromisoformat(end_date) if end_date else None,
+                query=query,
+                limit=limit,
+                offset=offset,
+            )
+            return [_commentary_for_mcp(item, output_format) for item in items]
+
+    @mcp.tool()
+    def get_commentary(
+        commentary_id: str, output_format: str = "markdown"
+    ) -> dict:
+        """Get one commentary as Markdown or structured blocks."""
+        with session_factory() as database_session:
+            commentary = commentaries(database_session).get(commentary_id)
+            return _commentary_for_mcp(commentary, output_format)
+
+    @mcp.tool()
+    def revise_commentary(
+        commentary_id: str,
+        content: dict[str, Any] | str,
+        title: str | None = None,
+        summary: str | None = None,
+        content_format: str = "structured",
+        source: str = "human",
+        source_ref: str | None = None,
+        data_snapshot: dict[str, Any] | None = None,
+        has_outlook: bool | None = None,
+        has_risk: bool | None = None,
+        has_trade_plan: bool | None = None,
+        output_format: str = "markdown",
+    ) -> dict:
+        """Create a revision while preserving the original commentary."""
+        payload = CommentaryRevisionCreate(
+            title=title,
+            summary=summary,
+            content=content,
+            content_format=content_format,
+            source=CommentarySource(source),
+            source_ref=source_ref,
+            data_snapshot=data_snapshot,
+            has_outlook=has_outlook,
+            has_risk=has_risk,
+            has_trade_plan=has_trade_plan,
+        )
+        with session_factory() as database_session:
+            commentary = commentaries(database_session).revise(
+                commentary_id, payload
+            )
+            return _commentary_for_mcp(commentary, output_format)
+
+    @mcp.tool()
     def create_portfolio(
         name: str,
         description: str | None = None,
@@ -602,6 +745,17 @@ def _json_strategy(strategy) -> dict:
     from .schemas import StrategyRead
 
     return _json(StrategyRead.model_validate(strategy))
+
+
+def _commentary_for_mcp(commentary, output_format: str) -> dict:
+    if output_format not in {"markdown", "structured"}:
+        raise ValueError("output_format must be markdown or structured")
+    payload = commentary.model_dump(mode="json")
+    markdown = payload.pop("content_markdown")
+    payload.pop("content_html")
+    if output_format == "markdown":
+        payload["content"] = markdown
+    return payload
 
 
 settings = get_settings()

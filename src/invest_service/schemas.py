@@ -1,9 +1,17 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .models import AssetCategory, MarketScopeType, TradeType
+from .models import (
+    AnalysisSession,
+    AssetCategory,
+    CommentarySource,
+    CommentarySubjectType,
+    MarketScopeType,
+    TradeType,
+)
 
 
 class APIModel(BaseModel):
@@ -52,6 +60,87 @@ class MarketScopeRead(APIModel):
     description: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class CommentaryCreate(APIModel):
+    subject_type: CommentarySubjectType
+    market_scope_code: str | None = Field(default=None, max_length=128)
+    portfolio_id: str | None = None
+    asset_symbol: str | None = Field(default=None, max_length=32)
+    asset_category: AssetCategory | None = None
+    session: AnalysisSession
+    trading_date: date
+    title: str = Field(min_length=1, max_length=255)
+    summary: str | None = None
+    content: dict[str, Any] | str
+    content_format: Literal["structured", "markdown", "html"] = "structured"
+    source: CommentarySource = CommentarySource.HUMAN
+    source_ref: str | None = None
+    data_snapshot: dict[str, Any] | list[Any] | None = None
+    has_outlook: bool = False
+    has_risk: bool = False
+    has_trade_plan: bool = False
+
+    @field_validator("market_scope_code")
+    @classmethod
+    def validate_market_scope_code(cls, value: str | None) -> str | None:
+        return normalize_market_scope_code(value) if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_subject(self):
+        targets = {
+            CommentarySubjectType.MARKET: bool(self.market_scope_code),
+            CommentarySubjectType.PORTFOLIO: bool(self.portfolio_id),
+            CommentarySubjectType.ASSET: bool(
+                self.asset_symbol and self.asset_category
+            ),
+        }
+        if not targets[self.subject_type] or sum(targets.values()) != 1:
+            raise ValueError(
+                "commentary requires exactly one subject matching subject_type"
+            )
+        if self.subject_type != CommentarySubjectType.ASSET and (
+            self.asset_symbol or self.asset_category
+        ):
+            raise ValueError("asset_symbol and asset_category are only valid for assets")
+        return self
+
+
+class CommentaryRevisionCreate(APIModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    summary: str | None = None
+    content: dict[str, Any] | str
+    content_format: Literal["structured", "markdown", "html"] = "structured"
+    source: CommentarySource = CommentarySource.HUMAN
+    source_ref: str | None = None
+    data_snapshot: dict[str, Any] | list[Any] | None = None
+    has_outlook: bool | None = None
+    has_risk: bool | None = None
+    has_trade_plan: bool | None = None
+
+
+class CommentaryRead(APIModel):
+    id: str
+    subject_type: CommentarySubjectType
+    market_scope_code: str | None
+    portfolio_id: str | None
+    asset_symbol: str | None
+    asset_category: AssetCategory | None
+    session: AnalysisSession
+    trading_date: date
+    title: str
+    summary: str | None
+    content: dict[str, Any]
+    content_markdown: str
+    content_html: str
+    source: CommentarySource
+    source_ref: str | None
+    data_snapshot: dict[str, Any] | list[Any] | None
+    has_outlook: bool
+    has_risk: bool
+    has_trade_plan: bool
+    revises_id: str | None
+    created_at: datetime
 
 
 class AssetCreate(APIModel):

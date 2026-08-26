@@ -7,6 +7,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     Date,
@@ -44,6 +45,27 @@ class MarketScopeType(str, enum.Enum):
     SECTOR = "sector"
     THEME = "theme"
     COMMODITY = "commodity"
+
+
+class CommentarySubjectType(str, enum.Enum):
+    MARKET = "market"
+    PORTFOLIO = "portfolio"
+    ASSET = "asset"
+
+
+class AnalysisSession(str, enum.Enum):
+    PRE_MARKET = "pre_market"
+    INTRADAY = "intraday"
+    POST_MARKET = "post_market"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+
+
+class CommentarySource(str, enum.Enum):
+    HUMAN = "human"
+    AI = "ai"
+    IMPORT = "import"
+    SYSTEM = "system"
 
 
 def asset_identity(category: AssetCategory | str, symbol: str) -> str:
@@ -266,6 +288,62 @@ class Strategy(Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+
+
+class Commentary(Base):
+    __tablename__ = "commentaries"
+    __table_args__ = (
+        Index("ix_commentaries_subject_date", "subject_type", "trading_date"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    subject_type: Mapped[CommentarySubjectType] = mapped_column(
+        Enum(CommentarySubjectType, native_enum=False), index=True
+    )
+    market_scope_code: Mapped[str | None] = mapped_column(
+        ForeignKey("market_scopes.code", ondelete="RESTRICT"), index=True
+    )
+    portfolio_id: Mapped[str | None] = mapped_column(
+        "strategy_id",
+        ForeignKey("strategies.id", ondelete="CASCADE"),
+        index=True,
+    )
+    asset_key: Mapped[str | None] = mapped_column(
+        "asset_symbol",
+        ForeignKey("assets.symbol", ondelete="CASCADE"),
+        index=True,
+    )
+    analysis_session: Mapped[AnalysisSession] = mapped_column(
+        "session", Enum(AnalysisSession, native_enum=False), index=True
+    )
+    trading_date: Mapped[date] = mapped_column(Date, index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    summary: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[dict] = mapped_column(JSON)
+    source: Mapped[CommentarySource] = mapped_column(
+        Enum(CommentarySource, native_enum=False), index=True
+    )
+    source_ref: Mapped[str | None] = mapped_column(Text)
+    data_snapshot: Mapped[dict | list | None] = mapped_column(JSON)
+    has_outlook: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false()
+    )
+    has_risk: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false()
+    )
+    has_trade_plan: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false()
+    )
+    revises_id: Mapped[str | None] = mapped_column(
+        ForeignKey("commentaries.id", ondelete="RESTRICT"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
+    asset: Mapped[Asset | None] = relationship()
 
 
 class OpeningSnapshot(Base):
