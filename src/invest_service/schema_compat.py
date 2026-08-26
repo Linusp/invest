@@ -154,8 +154,15 @@ def prepare_legacy_schema(engine: Engine) -> None:
                 connection.execute(
                     text("ALTER TABLE trades ADD COLUMN position_id VARCHAR(36)")
                 )
+            if "trade_plan_id" not in trade_columns:
+                connection.execute(
+                    text("ALTER TABLE trades ADD COLUMN trade_plan_id VARCHAR(36)")
+                )
         trades = Table("trades", MetaData(), autoload_with=engine)
         Index("ix_trades_position_id", trades.c.position_id).create(
+            bind=engine, checkfirst=True
+        )
+        Index("ix_trades_trade_plan_id", trades.c.trade_plan_id).create(
             bind=engine, checkfirst=True
         )
     _migrate_asset_identities(engine)

@@ -115,10 +115,10 @@ def test_adds_position_id_column_to_legacy_trades_table(tmp_path):
 
     prepare_legacy_schema(engine)
 
-    assert "position_id" in {
+    assert {"position_id", "trade_plan_id"} <= {
         item["name"] for item in inspect(engine).get_columns("trades")
     }
-    assert "ix_trades_position_id" in {
+    assert {"ix_trades_position_id", "ix_trades_trade_plan_id"} <= {
         item["name"] for item in inspect(engine).get_indexes("trades")
     }
     engine.dispose()
