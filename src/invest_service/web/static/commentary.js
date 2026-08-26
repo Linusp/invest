@@ -66,6 +66,9 @@
             </dialog>`;
         const list = root.querySelector(".commentary-list");
         const dialog = root.querySelector("dialog");
+        const detailDialog = document.createElement("dialog");
+        detailDialog.className = "dialog-wide";
+        document.body.append(detailDialog);
         const form = dialog.querySelector("form");
         const filter = root.querySelector(".commentary-session-filter");
 
@@ -77,8 +80,8 @@
             const params = new URLSearchParams(subjectParams(subject));
             if (filter.value) params.set("session", filter.value);
             const items = await window.api(`/commentaries?${params}`);
-            list.innerHTML = items.length ? items.map(item => `
-                <article class="commentary-item">
+            list.innerHTML = items.length ? items.map((item, index) => `
+                <button type="button" class="commentary-item commentary-list-item" data-commentary-index="${index}">
                     <div class="commentary-meta">
                         <span class="badge">${escapeHtml(sessionLabels[item.session] || item.session)}</span>
                         <time>${escapeHtml(item.trading_date)}</time>
@@ -87,13 +90,21 @@
                     </div>
                     <h3>${escapeHtml(item.title)}</h3>
                     ${item.summary ? `<p class="commentary-summary">${escapeHtml(item.summary)}</p>` : ""}
-                    <div class="commentary-content">${item.content_html}</div>
                     <div class="commentary-flags">
                         ${item.has_outlook ? "<span>预判</span>" : ""}
                         ${item.has_risk ? "<span>风险</span>" : ""}
                         ${item.has_trade_plan ? "<span>交易计划</span>" : ""}
                     </div>
-                </article>`).join("") : '<div class="empty-state compact">暂无点评</div>';
+                </button>`).join("") : '<div class="empty-state compact">暂无点评</div>';
+            list.querySelectorAll("[data-commentary-index]").forEach(button => {
+                button.addEventListener("click", () => {
+                    const item = items[Number(button.dataset.commentaryIndex)];
+                    detailDialog.innerHTML = `<div class="dialog-header"><h2>${escapeHtml(item.title)}</h2><button class="icon-button" type="button" aria-label="关闭"><i data-lucide="x"></i></button></div><div class="dialog-body"><div class="commentary-meta"><span class="badge">${escapeHtml(sessionLabels[item.session] || item.session)}</span><time>${escapeHtml(item.trading_date)}</time></div>${item.summary ? `<p class="commentary-summary">${escapeHtml(item.summary)}</p>` : ""}<div class="commentary-content">${item.content_html}</div></div>`;
+                    detailDialog.querySelector("button").addEventListener("click", () => detailDialog.close());
+                    detailDialog.showModal();
+                    window.lucide?.createIcons();
+                });
+            });
         }
 
         async function save(event) {
