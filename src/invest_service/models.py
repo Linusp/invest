@@ -96,6 +96,13 @@ class TradePlanStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class TradePlanReviewOutcome(str, enum.Enum):
+    PROFITABLE = "profitable"
+    UNPROFITABLE = "unprofitable"
+    NEUTRAL = "neutral"
+    CANCELLED = "cancelled"
+
+
 def asset_identity(category: AssetCategory | str, symbol: str) -> str:
     category_value = (
         category.value
@@ -510,6 +517,29 @@ class TradePlan(Base):
     )
 
     asset: Mapped[Asset] = relationship()
+    review: Mapped["TradePlanReview | None"] = relationship(
+        back_populates="plan", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class TradePlanReview(Base):
+    __tablename__ = "trade_plan_reviews"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    plan_id: Mapped[str] = mapped_column(
+        ForeignKey("trade_plans.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    outcome: Mapped[TradePlanReviewOutcome] = mapped_column(
+        Enum(TradePlanReviewOutcome, native_enum=False)
+    )
+    summary: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[dict] = mapped_column(JSON)
+    realized_profit: Mapped[Decimal | None] = mapped_column(Numeric(24, 6))
+    reviewed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    plan: Mapped[TradePlan] = relationship(back_populates="review")
 
 
 class OpeningSnapshot(Base):
@@ -618,6 +648,9 @@ class Trade(Base):
         ForeignKey("assets.symbol", ondelete="RESTRICT"), index=True
     )
     position_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    trade_plan_id: Mapped[str | None] = mapped_column(
+        ForeignKey("trade_plans.id", ondelete="SET NULL"), index=True
+    )
     type: Mapped[TradeType] = mapped_column(Enum(TradeType, native_enum=False), index=True)
     trade_date: Mapped[date] = mapped_column(Date, index=True)
     price: Mapped[Decimal] = mapped_column(Numeric(20, 6))
@@ -630,6 +663,7 @@ class Trade(Base):
 
     strategy: Mapped[Strategy] = relationship(back_populates="trades")
     asset: Mapped[Asset | None] = relationship()
+    trade_plan: Mapped[TradePlan | None] = relationship()
 
     @property
     def asset_symbol(self) -> str | None:

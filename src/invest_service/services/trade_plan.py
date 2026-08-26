@@ -4,6 +4,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from ..commentary_content import normalize_content
 from ..models import (
     Asset,
     AssetCategory,
@@ -17,6 +18,8 @@ from ..models import (
 from ..schemas import (
     TradePlanCreate,
     TradePlanRead,
+    TradePlanReviewCreate,
+    TradePlanReviewRead,
     TradePlanStatusUpdate,
     TradePlanUpdate,
 )
@@ -154,6 +157,25 @@ class TradePlanService:
         self.session.commit()
         return self._read(self._load(plan_id))
 
+    def review(self, plan_id: str, data: TradePlanReviewCreate) -> TradePlanReviewRead:
+        plan = self._load(plan_id)
+        review = plan.review
+        if review is None:
+            from ..models import TradePlanReview
+
+            review = TradePlanReview(plan_id=plan.id)
+            self.session.add(review)
+        review.outcome = data.outcome
+        review.summary = data.summary
+        review.content = normalize_content(data.content, data.content_format)
+        review.realized_profit = data.realized_profit
+        self.session.commit()
+        return self._review_read(review)
+
+    def get_review(self, plan_id: str) -> TradePlanReviewRead | None:
+        plan = self._load(plan_id)
+        return self._review_read(plan.review) if plan.review else None
+
     def _validate_refs(
         self, portfolio_id: str, category: AssetCategory, symbol: str
     ) -> None:
@@ -195,4 +217,16 @@ class TradePlanService:
             triggered_at=plan.triggered_at,
             created_at=plan.created_at,
             updated_at=plan.updated_at,
+        )
+
+    @staticmethod
+    def _review_read(review) -> TradePlanReviewRead:
+        return TradePlanReviewRead(
+            id=review.id,
+            plan_id=review.plan_id,
+            outcome=review.outcome,
+            summary=review.summary,
+            content=review.content,
+            realized_profit=review.realized_profit,
+            reviewed_at=review.reviewed_at,
         )

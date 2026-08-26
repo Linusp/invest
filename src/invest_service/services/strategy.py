@@ -19,6 +19,7 @@ from ..models import (
     OpeningSnapshot,
     Strategy,
     Trade,
+    TradePlan,
     TradeType,
     asset_identity,
 )
@@ -185,6 +186,13 @@ class StrategyService:
 
     def add_trade(self, strategy_id: str, data: TradeCreate) -> Trade:
         strategy = self.get(strategy_id)
+        trade_plan = None
+        if data.trade_plan_id:
+            trade_plan = self.session.get(TradePlan, data.trade_plan_id)
+            if trade_plan is None:
+                raise InvalidTrade("trade_plan was not found")
+            if trade_plan.portfolio_id != strategy_id:
+                raise InvalidTrade("trade_plan must belong to the same portfolio")
         if (
             strategy.opening_snapshot is not None
             and data.trade_date <= strategy.opening_snapshot.snapshot_date
@@ -204,6 +212,8 @@ class StrategyService:
                 return existing
         symbol = data.asset_symbol.upper() if data.asset_symbol else None
         asset = self._resolve_asset(symbol, data.asset_category) if symbol else None
+        if trade_plan is not None and asset is not None and trade_plan.asset_key != asset.key:
+            raise InvalidTrade("trade_plan must target the same asset as the trade")
         currency = asset.currency if asset is not None else (
             data.currency or self.reporting_currency
         ).upper()
@@ -218,6 +228,7 @@ class StrategyService:
             currency=currency,
             note=data.note,
             idempotency_key=data.idempotency_key,
+            trade_plan=trade_plan,
         )
         self.session.add(trade)
         try:

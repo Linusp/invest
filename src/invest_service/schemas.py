@@ -14,6 +14,7 @@ from .models import (
     MarketScopeType,
     TradePlanAction,
     TradePlanLogic,
+    TradePlanReviewOutcome,
     TradePlanStatus,
     TradeType,
 )
@@ -296,6 +297,24 @@ class TradePlanRead(APIModel):
     updated_at: datetime
 
 
+class TradePlanReviewCreate(APIModel):
+    outcome: TradePlanReviewOutcome
+    summary: str | None = None
+    content: dict[str, Any] | str
+    content_format: Literal["structured", "markdown", "html"] = "structured"
+    realized_profit: Decimal | None = None
+
+
+class TradePlanReviewRead(APIModel):
+    id: str
+    plan_id: str
+    outcome: TradePlanReviewOutcome
+    summary: str | None
+    content: dict[str, Any]
+    realized_profit: Decimal | None
+    reviewed_at: datetime
+
+
 class AssetCreate(APIModel):
     symbol: str = Field(min_length=1, max_length=32)
     name: str = Field(min_length=1, max_length=255)
@@ -517,6 +536,7 @@ class TradeCreate(APIModel):
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     note: str | None = None
     idempotency_key: str | None = Field(default=None, max_length=128)
+    trade_plan_id: str | None = None
 
     @model_validator(mode="after")
     def validate_trade_shape(self):
@@ -546,6 +566,7 @@ class TradeRead(APIModel):
     currency: str
     note: str | None
     idempotency_key: str | None
+    trade_plan_id: str | None
     created_at: datetime
 
 

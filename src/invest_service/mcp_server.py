@@ -42,6 +42,7 @@ from .schemas import (
     TradeCreate,
     TradePlanCondition,
     TradePlanCreate,
+    TradePlanReviewCreate,
     TradePlanStatusUpdate,
     TradePlanUpdate,
 )
@@ -739,6 +740,39 @@ def build_mcp(
             )
 
     @mcp.tool()
+    def review_trade_plan(
+        plan_id: str,
+        outcome: str,
+        content: dict[str, Any] | str,
+        summary: str | None = None,
+        content_format: str = "structured",
+        realized_profit: float | None = None,
+    ) -> dict:
+        """Record or replace a structured review for an executed plan."""
+        from .models import TradePlanReviewOutcome
+
+        payload = TradePlanReviewCreate(
+            outcome=TradePlanReviewOutcome(outcome),
+            summary=summary,
+            content=content,
+            content_format=content_format,
+            realized_profit=(
+                Decimal(str(realized_profit)) if realized_profit is not None else None
+            ),
+        )
+        with session_factory() as database_session:
+            return _json(
+                trade_plans(database_session).review(plan_id, payload).model_dump(mode="json")
+            )
+
+    @mcp.tool()
+    def get_trade_plan_review(plan_id: str) -> dict | None:
+        """Get the structured review for a trade plan, if one exists."""
+        with session_factory() as database_session:
+            review = trade_plans(database_session).get_review(plan_id)
+            return _json(review.model_dump(mode="json")) if review else None
+
+    @mcp.tool()
     def create_portfolio(
         name: str,
         description: str | None = None,
@@ -904,6 +938,7 @@ def build_mcp(
         note: str | None = None,
         idempotency_key: str | None = None,
         currency: str | None = None,
+        trade_plan_id: str | None = None,
     ) -> dict:
         """Add a buy, sell, deposit or withdrawal transaction to a strategy."""
         from .schemas import TradeRead
@@ -924,6 +959,7 @@ def build_mcp(
                     currency=currency,
                     note=note,
                     idempotency_key=idempotency_key,
+                    trade_plan_id=trade_plan_id,
                 ),
             )
             return _json(TradeRead.model_validate(trade))
@@ -975,6 +1011,7 @@ def build_mcp(
         note: str | None = None,
         idempotency_key: str | None = None,
         currency: str | None = None,
+        trade_plan_id: str | None = None,
     ) -> dict:
         """Add a transaction to a portfolio ledger."""
         return add_strategy_trade(
@@ -989,6 +1026,7 @@ def build_mcp(
             note,
             idempotency_key,
             currency,
+            trade_plan_id,
         )
 
     return mcp

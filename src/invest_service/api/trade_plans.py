@@ -9,6 +9,8 @@ from ..models import AssetCategory, TradePlanStatus
 from ..schemas import (
     TradePlanCreate,
     TradePlanRead,
+    TradePlanReviewCreate,
+    TradePlanReviewRead,
     TradePlanStatusUpdate,
     TradePlanUpdate,
 )
@@ -61,3 +63,17 @@ def change_trade_plan_status(
     plan_id: str, data: TradePlanStatusUpdate, service: Service
 ):
     return service.change_status(plan_id, data)
+
+
+@router.post(
+    "/{plan_id}/review",
+    response_model=TradePlanReviewRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def review_trade_plan(plan_id: str, data: TradePlanReviewCreate, service: Service):
+    return service.review(plan_id, data)
+
+
+@router.get("/{plan_id}/review", response_model=TradePlanReviewRead | None)
+def get_trade_plan_review(plan_id: str, service: Service):
+    return service.get_review(plan_id)
