@@ -520,6 +520,32 @@ class TradePlan(Base):
     review: Mapped["TradePlanReview | None"] = relationship(
         back_populates="plan", cascade="all, delete-orphan", uselist=False
     )
+    status_history: Mapped[list["TradePlanStatusEvent"]] = relationship(
+        back_populates="plan",
+        cascade="all, delete-orphan",
+        order_by="TradePlanStatusEvent.created_at",
+    )
+
+
+class TradePlanStatusEvent(Base):
+    __tablename__ = "trade_plan_status_events"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    plan_id: Mapped[str] = mapped_column(
+        ForeignKey("trade_plans.id", ondelete="CASCADE"), index=True
+    )
+    from_status: Mapped[TradePlanStatus] = mapped_column(
+        Enum(TradePlanStatus, native_enum=False)
+    )
+    to_status: Mapped[TradePlanStatus] = mapped_column(
+        Enum(TradePlanStatus, native_enum=False)
+    )
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    plan: Mapped[TradePlan] = relationship(back_populates="status_history")
 
 
 class TradePlanReview(Base):

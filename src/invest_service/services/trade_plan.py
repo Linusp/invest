@@ -12,6 +12,7 @@ from ..models import (
     Strategy,
     TradePlan,
     TradePlanStatus,
+    TradePlanStatusEvent,
     asset_identity,
     utcnow,
 )
@@ -151,11 +152,27 @@ class TradePlanService:
             raise InvalidTradePlan(
                 f"cannot change trade plan from {plan.status.value} to {data.status.value}"
             )
+        previous = plan.status
         plan.status = data.status
         if data.status == TradePlanStatus.TRIGGERED:
             plan.triggered_at = utcnow()
+        self.session.add(
+            TradePlanStatusEvent(
+                plan_id=plan.id, from_status=previous, to_status=data.status
+            )
+        )
         self.session.commit()
         return self._read(self._load(plan_id))
+
+    def history(self, plan_id: str):
+        plan = self._load(plan_id)
+        return list(
+            self.session.scalars(
+                select(TradePlanStatusEvent)
+                .where(TradePlanStatusEvent.plan_id == plan.id)
+                .order_by(TradePlanStatusEvent.created_at)
+            )
+        )
 
     def review(self, plan_id: str, data: TradePlanReviewCreate) -> TradePlanReviewRead:
         plan = self._load(plan_id)

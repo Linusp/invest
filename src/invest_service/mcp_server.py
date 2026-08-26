@@ -43,6 +43,7 @@ from .schemas import (
     TradePlanCondition,
     TradePlanCreate,
     TradePlanReviewCreate,
+    TradePlanStatusEventRead,
     TradePlanStatusUpdate,
     TradePlanUpdate,
 )
@@ -771,6 +772,15 @@ def build_mcp(
         with session_factory() as database_session:
             review = trade_plans(database_session).get_review(plan_id)
             return _json(review.model_dump(mode="json")) if review else None
+
+    @mcp.tool()
+    def get_trade_plan_history(plan_id: str) -> list[dict]:
+        """List immutable status transitions for a trade plan."""
+        with session_factory() as database_session:
+            return [
+                _json(TradePlanStatusEventRead.model_validate(item))
+                for item in trade_plans(database_session).history(plan_id)
+            ]
 
     @mcp.tool()
     def create_portfolio(

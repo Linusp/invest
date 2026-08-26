@@ -11,6 +11,7 @@ from ..schemas import (
     TradePlanRead,
     TradePlanReviewCreate,
     TradePlanReviewRead,
+    TradePlanStatusEventRead,
     TradePlanStatusUpdate,
     TradePlanUpdate,
 )
@@ -77,3 +78,8 @@ def review_trade_plan(plan_id: str, data: TradePlanReviewCreate, service: Servic
 @router.get("/{plan_id}/review", response_model=TradePlanReviewRead | None)
 def get_trade_plan_review(plan_id: str, service: Service):
     return service.get_review(plan_id)
+
+
+@router.get("/{plan_id}/history", response_model=list[TradePlanStatusEventRead])
+def get_trade_plan_history(plan_id: str, service: Service):
+    return service.history(plan_id)

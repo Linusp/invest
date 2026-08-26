@@ -315,6 +315,15 @@ class TradePlanReviewRead(APIModel):
     reviewed_at: datetime
 
 
+class TradePlanStatusEventRead(APIModel):
+    id: str
+    plan_id: str
+    from_status: TradePlanStatus
+    to_status: TradePlanStatus
+    reason: str | None
+    created_at: datetime
+
+
 class AssetCreate(APIModel):
     symbol: str = Field(min_length=1, max_length=32)
     name: str = Field(min_length=1, max_length=255)
