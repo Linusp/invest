@@ -42,6 +42,7 @@ def test_trade_plan_crud_allows_multiple_plans_and_safe_status_flow(client):
     assert created.status_code == 201
     plan = created.json()
     assert plan["status"] == "draft"
+    assert plan["asset_name"] == "浦发银行"
     assert plan["conditions"][0]["type"] == "price_lte"
     assert plan["quantity"] == "100.000000"
 

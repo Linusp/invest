@@ -427,7 +427,7 @@
             && (!$("plans-action").value || plan.action === $("plans-action").value)
             && (!$("plans-status").value || plan.status === $("plans-status").value));
         plans = sortList(plans, listViews.plans.sort, {
-            asset: item => item.asset_symbol, action: item => item.action,
+            asset: item => item.asset_name || item.asset_symbol, action: item => item.action,
             condition: item => item.conditions.map(value => value.label || value.type).join(" "),
             size: item => Number(item.quantity ?? item.amount ?? item.position_ratio ?? 0),
             valid: item => item.valid_until || "", status: item => item.status,
@@ -436,7 +436,7 @@
         $("trade-plans").hidden = plans.length === 0;
         $("trade-plans-empty").hidden = plans.length !== 0;
         $("trade-plans-body").innerHTML = result.items.length ? result.items.map(plan => `
-            <tr><td><div class="asset-name">${escapeHtml(plan.asset_symbol)}</div><div class="asset-code">${escapeHtml(plan.asset_category)}</div></td>
+            <tr><td><a href="/market/${encodeURIComponent(plan.asset_category)}/${encodeURIComponent(plan.asset_symbol)}"><div class="asset-name">${escapeHtml(plan.asset_name || plan.asset_symbol)}</div><div class="asset-code mono">${escapeHtml(plan.asset_symbol)}</div></a></td>
                 <td><span class="badge">${actionLabels[plan.action]}</span></td>
                 <td>${escapeHtml(plan.conditions.map(condition => condition.label || `${condition.type}: ${condition.value}`).join(plan.logic === "and" ? "；" : " 或 "))}</td>
                 <td class="sensitive">${plan.quantity != null ? `数量 ${number(plan.quantity, 6)}` : plan.amount != null ? `金额 ${money(plan.amount, state.detail.summary.reporting_currency)}` : `仓位 ${(Number(plan.position_ratio) * 100).toFixed(2)}%`}</td>

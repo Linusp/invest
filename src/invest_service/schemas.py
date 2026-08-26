@@ -278,6 +278,7 @@ class TradePlanRead(APIModel):
     id: str
     portfolio_id: str
     asset_symbol: str
+    asset_name: str
     asset_category: AssetCategory
     action: TradePlanAction
     logic: TradePlanLogic

@@ -217,6 +217,7 @@ class TradePlanService:
             id=plan.id,
             portfolio_id=plan.portfolio_id,
             asset_symbol=plan.asset.symbol,
+            asset_name=plan.asset.name,
             asset_category=plan.asset.category,
             action=plan.action,
             logic=plan.logic,
