@@ -43,10 +43,6 @@
     </section>
 
     <section id="strategy-detail" hidden>
-        <div class="panel portfolio-profile">
-            <div><span>组合</span><strong id="profile-name">--</strong></div>
-            <button id="portfolio-info" class="icon-button" type="button" title="查看组合详情" aria-label="查看组合详情"><i data-lucide="info"></i></button>
-        </div>
         <div class="metric-grid sensitive">
             <div class="metric"><span>总资产</span><strong id="metric-total">--</strong></div>
             <div class="metric"><span>净投入</span><strong id="metric-principal">--</strong></div>
@@ -328,15 +324,20 @@
 
     function renderStrategies() {
         $("strategy-list").innerHTML = state.strategies.length ? state.strategies.map(item => `
-            <button type="button" class="strategy-item ${item.id === state.activeId ? "active" : ""}"
+            <div role="button" tabindex="0" class="strategy-item ${item.id === state.activeId ? "active" : ""}"
                     data-strategy-id="${item.id}">
-                <strong>${escapeHtml(item.name)}</strong>
+                <div class="strategy-item-title"><strong>${escapeHtml(item.name)}</strong><button class="icon-button strategy-info" type="button" title="查看组合详情" aria-label="查看组合详情" data-info-strategy-id="${item.id}"><i data-lucide="info"></i></button></div>
                 <small>${escapeHtml(item.description || "暂无描述")}</small>
-            </button>`).join("") :
+            </div>`).join("") :
             '<div class="empty-state" style="min-height:160px"><div>暂无组合</div></div>';
         $("strategy-list").querySelectorAll("[data-strategy-id]").forEach(button => {
             button.addEventListener("click", () => selectStrategy(button.dataset.strategyId));
+            button.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectStrategy(button.dataset.strategyId); } });
         });
+        $("strategy-list").querySelectorAll("[data-info-strategy-id]").forEach(button => {
+            button.addEventListener("click", event => { event.stopPropagation(); openPortfolioInfo(button.dataset.infoStrategyId); });
+        });
+        window.lucide?.createIcons();
     }
 
     async function loadStrategies(preferredId = null) {
@@ -397,7 +398,6 @@
         const detail = state.detail;
         const summary = detail.summary;
         const currency = summary.reporting_currency;
-        $("profile-name").textContent = detail.name;
         $("profile-style").textContent = detail.investment_style || "--";
         $("metric-initial-capital").textContent = detail.initial_capital == null
             ? "--" : money(detail.initial_capital, currency);
@@ -799,7 +799,17 @@
             $("trade-plans-tab").hidden = button.dataset.tab !== "trade-plans";
         });
     });
-    $("portfolio-info").addEventListener("click", () => $("portfolio-info-dialog").showModal());
+    function openPortfolioInfo(id) {
+        const detail = id === state.activeId ? state.detail : state.strategies.find(item => item.id === id);
+        if (!detail) return;
+        $("profile-style").textContent = detail.investment_style || "--";
+        $("profile-owned").textContent = detail.is_owned == null ? "--" : detail.is_owned ? "自有资产" : "代管 / 其他";
+        $("profile-purpose").textContent = detail.purpose || "--";
+        $("profile-direction").textContent = detail.investment_direction || "--";
+        $("profile-constraints").textContent = detail.constraints || "--";
+        $("profile-notes").textContent = detail.notes || "--";
+        $("portfolio-info-dialog").showModal();
+    }
     $("portfolio-info-close").addEventListener("click", () => $("portfolio-info-dialog").close());
     $("new-strategy").addEventListener("click", () => openStrategyDialog(false));
     $("empty-create").addEventListener("click", () => openStrategyDialog(false));

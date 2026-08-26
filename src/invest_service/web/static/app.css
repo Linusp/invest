@@ -124,6 +124,8 @@ svg { width: 18px; height: 18px; flex: none; }
 .strategy-item:hover { background: #f7f9fa; }
 .strategy-item.active { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
 .strategy-item strong { display: block; font-size: 13px; margin-bottom: 4px; }
+.strategy-item-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.strategy-item-title .strategy-info { flex: 0 0 auto; width: 26px; height: 26px; }
 .strategy-item small { color: var(--muted); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .portfolio-profile { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 18px; }
 .portfolio-profile div { min-width: 0; }
