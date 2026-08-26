@@ -93,6 +93,10 @@
             </div>
         </div>
         <div id="portfolio-commentary"></div>
+        <div id="trade-plans" class="panel">
+            <div class="panel-header"><div><h2 class="panel-title">交易计划</h2><span class="muted">触发后仅进入待确认，不自动下单</span></div></div>
+            <div class="table-wrap"><table class="data-table"><thead><tr><th>标的</th><th>动作</th><th>条件</th><th>规模</th><th>有效期</th><th>状态</th></tr></thead><tbody id="trade-plans-body"></tbody></table></div>
+        </div>
     </section>
 </div>
 
@@ -304,6 +308,8 @@
     const commentaryTimeline = window.CommentaryTimeline.mount({
         container: "#portfolio-commentary", title: "组合点评",
     });
+    const planLabels = {draft: "草稿", active: "生效", triggered: "待确认", partially_executed: "部分执行", executed: "已执行", expired: "已过期", cancelled: "已取消"};
+    const actionLabels = {buy: "买入", sell: "卖出"};
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
     })[c]);
@@ -343,6 +349,7 @@
             await commentaryTimeline.setSubject({
                 subject_type: "portfolio", portfolio_id: id,
             });
+            await loadTradePlans(id);
             for (const position of state.detail.positions) {
                 state.assets.set(assetIdentity(position.asset), position.asset);
             }
@@ -352,6 +359,16 @@
             renderDetail();
             showDetail(true);
         } catch (error) { showToast(error.message, "error"); }
+    }
+
+    async function loadTradePlans(portfolioId) {
+        const plans = await api("/trade-plans?portfolio_id=" + encodeURIComponent(portfolioId));
+        $("trade-plans-body").innerHTML = plans.length ? plans.map(plan => `
+            <tr><td><div class="asset-name">${escapeHtml(plan.asset_symbol)}</div><div class="asset-code">${escapeHtml(plan.asset_category)}</div></td>
+                <td><span class="badge">${actionLabels[plan.action]}</span></td>
+                <td>${escapeHtml(plan.conditions.map(condition => condition.label || `${condition.type}: ${condition.value}`).join(plan.logic === "and" ? "；" : " 或 "))}</td>
+                <td class="sensitive">${plan.quantity != null ? `数量 ${number(plan.quantity, 6)}` : plan.amount != null ? `金额 ${money(plan.amount, state.detail.summary.reporting_currency)}` : `仓位 ${(Number(plan.position_ratio) * 100).toFixed(2)}%`}</td>
+                <td>${plan.valid_from || "--"} 至 ${plan.valid_until || "--"}</td><td><span class="badge ${plan.status}">${planLabels[plan.status] || plan.status}</span></td></tr>`).join("") : '<tr><td colspan="6"><div class="empty-state compact">暂无交易计划</div></td></tr>';
     }
 
     function showDetail(visible) {

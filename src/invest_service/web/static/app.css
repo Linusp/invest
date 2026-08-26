@@ -146,6 +146,7 @@ svg { width: 18px; height: 18px; flex: none; }
 .commentary-metric dd { margin: 0; font-weight: 700; }
 .commentary-flags { margin-top: 12px; }
 .commentary-flags span { padding: 2px 7px; border-radius: 999px; background: #f3f5f7; }
+.trade-plans { margin-top: 18px; }
 .commentary-editor { min-height: 220px; }
 .scope-profile { margin-bottom: 18px; }
 .scope-profile h2 { display: inline; margin-left: 8px; }
