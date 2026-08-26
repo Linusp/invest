@@ -25,23 +25,20 @@
         };
     }
 
-    function mount({container, title = "点评时间线"}) {
+    function mount({container}) {
         const root = typeof container === "string" ? document.querySelector(container) : container;
         const id = `commentary-${++sequence}`;
         let subject = null;
         root.innerHTML = `
             <section class="panel commentary-panel">
-                <div class="panel-header commentary-header">
-                    <div><h2 class="panel-title">${escapeHtml(title)}</h2><span class="muted">盘前、盘中、盘后与复盘</span></div>
-                    <div class="actions">
+                <div class="commentary-toolbar">
                         <select class="input commentary-session-filter" aria-label="按时段筛选">
                             <option value="">全部时段</option>
                             ${Object.entries(sessionLabels).map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}
                         </select>
-                        <button class="button primary commentary-add" type="button"><i data-lucide="message-square-plus"></i><span>添加点评</span></button>
-                    </div>
+                        <button class="button primary commentary-add" type="button"><i data-lucide="message-square-plus"></i><span>添加</span></button>
                 </div>
-                <div class="commentary-list"><div class="empty-state compact">请选择分析对象</div></div>
+                <div class="table-wrap"><table class="data-table commentary-table"><thead><tr><th>日期</th><th>时段</th><th>标题</th><th>摘要</th><th>来源</th></tr></thead><tbody class="commentary-list"><tr><td colspan="5"><div class="empty-state compact">请选择分析对象</div></td></tr></tbody></table></div>
             </section>
             <dialog id="${id}-dialog" class="dialog-wide">
                 <form>
@@ -74,28 +71,20 @@
 
         async function load() {
             if (!subject) {
-                list.innerHTML = '<div class="empty-state compact">请选择分析对象</div>';
+                list.innerHTML = '<tr><td colspan="5"><div class="empty-state compact">请选择分析对象</div></td></tr>';
                 return;
             }
             const params = new URLSearchParams(subjectParams(subject));
             if (filter.value) params.set("session", filter.value);
             const items = await window.api(`/commentaries?${params}`);
             list.innerHTML = items.length ? items.map((item, index) => `
-                <button type="button" class="commentary-item commentary-list-item" data-commentary-index="${index}">
-                    <div class="commentary-meta">
-                        <span class="badge">${escapeHtml(sessionLabels[item.session] || item.session)}</span>
-                        <time>${escapeHtml(item.trading_date)}</time>
-                        <span>${escapeHtml(sourceLabels[item.source] || item.source)}</span>
-                        ${item.revises_id ? '<span class="badge">修订</span>' : ""}
-                    </div>
-                    <h3>${escapeHtml(item.title)}</h3>
-                    ${item.summary ? `<p class="commentary-summary">${escapeHtml(item.summary)}</p>` : ""}
-                    <div class="commentary-flags">
-                        ${item.has_outlook ? "<span>预判</span>" : ""}
-                        ${item.has_risk ? "<span>风险</span>" : ""}
-                        ${item.has_trade_plan ? "<span>交易计划</span>" : ""}
-                    </div>
-                </button>`).join("") : '<div class="empty-state compact">暂无点评</div>';
+                <tr class="commentary-list-row" tabindex="0" role="button" data-commentary-index="${index}">
+                    <td class="mono">${escapeHtml(item.trading_date)}</td>
+                    <td><span class="badge">${escapeHtml(sessionLabels[item.session] || item.session)}</span></td>
+                    <td class="commentary-list-title">${escapeHtml(item.title)}</td>
+                    <td class="commentary-list-summary">${escapeHtml(item.summary || "--")}</td>
+                    <td>${escapeHtml(sourceLabels[item.source] || item.source)}</td>
+                </tr>`).join("") : '<tr><td colspan="5"><div class="empty-state compact">暂无点评</div></td></tr>';
             list.querySelectorAll("[data-commentary-index]").forEach(button => {
                 button.addEventListener("click", () => {
                     const item = items[Number(button.dataset.commentaryIndex)];
@@ -103,6 +92,12 @@
                     detailDialog.querySelector("button").addEventListener("click", () => detailDialog.close());
                     detailDialog.showModal();
                     window.lucide?.createIcons();
+                });
+                button.addEventListener("keydown", event => {
+                    if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        button.click();
+                    }
                 });
             });
         }
