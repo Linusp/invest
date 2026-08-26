@@ -1,6 +1,6 @@
 # Invest Service
 
-独立的投资数据服务，提供 FastAPI REST API、Web 页面和 MCP 接口，支持个股、ETF、指数的本地搜索、行情、标签自选和策略交易分析。
+独立的投资数据服务，提供 FastAPI REST API、Web 页面和 MCP 接口，支持个股、ETF、指数的本地搜索、行情、标签自选和组合交易分析。
 
 ## 快速开始
 
@@ -29,7 +29,7 @@ make test
 
 - `/market`：按标签浏览和管理自选标的。
 - `/market/{category}/{symbol}`：查看单个标的行情、历史数据和日期快捷范围。
-- `/strategy`：管理策略、交易、持仓和盈亏。
+- `/strategy`：管理组合属性、交易、持仓和盈亏。
 
 ## 文档
 

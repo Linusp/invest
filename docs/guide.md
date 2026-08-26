@@ -37,7 +37,7 @@ docker compose -f docker-compose.yml -f docker-compose.mysql.yml up --build -d
 
 ## MCP 接入
 
-服务提供两种 MCP transport：Streamable HTTP 和 stdio。两种方式暴露同一组工具，包括本地标的模糊搜索、行情历史、策略、交易和持仓查询。
+服务提供两种 MCP transport：Streamable HTTP 和 stdio。两种方式暴露同一组工具，包括本地标的模糊搜索、行情历史、组合、交易和持仓查询。
 
 ### Streamable HTTP
 

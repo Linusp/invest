@@ -28,9 +28,9 @@
 | `PUT` | `/tags/{name}/pin` | 设置置顶状态 |
 | `PUT` | `/tags/order` | 调整分组顺序 |
 
-## 策略与汇率
+## 组合与汇率
 
-策略接口包括策略 CRUD、期初状态、交易和持仓接口；汇率接口为 `GET /exchange-rates/{currency}`。
+组合接口以 `/portfolios` 为入口，包括组合属性 CRUD、期初状态、交易和持仓；原 `/strategies` 路径作为兼容接口保留。组合属性包括初始本金、投资风格、是否自有资产、用途、投资方向、约束和备注。汇率接口为 `GET /exchange-rates/{currency}`。
 
 标的身份由 `category + symbol` 共同确定；不同分类可以使用相同 symbol。交易及期初持仓出现重码时必须传 `asset_category`。证券交易的 `price` 是标的原币种单价，现金流水的 `price` 是现金金额；新增交易可传 `idempotency_key` 安全重试。
 
@@ -38,11 +38,12 @@
 
 ## MCP 工具覆盖
 
-MCP 与上述业务接口保持同一套服务层逻辑，当前提供 28 个工具：
+MCP 与上述业务接口保持同一套服务层逻辑，当前提供 38 个工具：
 
 - 标的：`search_assets`、`list_assets`、`get_asset`、`register_asset`、`refresh_asset_market_data`、`get_market_history`、`set_asset_favorite`
 - 自选与分组：`list_asset_tags`、`update_asset_tags`、`add_asset_tag`、`remove_asset_tag`、`list_tags`、`create_tag`、`delete_tag`、`reorder_tags`、`pin_tag`、`list_tag_assets`
 - 汇率：`get_exchange_rate`
-- 策略：`create_strategy`、`list_strategies`、`get_strategy`、`update_strategy`、`set_strategy_opening_snapshot`、`get_strategy_opening_snapshot`、`delete_strategy_opening_snapshot`、`get_strategy_trades`、`get_strategy_positions`、`add_strategy_trade`
+- 组合：`create_portfolio`、`list_portfolios`、`get_portfolio`、`update_portfolio`、`set_portfolio_opening_snapshot`、`get_portfolio_opening_snapshot`、`delete_portfolio_opening_snapshot`、`get_portfolio_trades`、`get_portfolio_positions`、`add_portfolio_trade`
+- 组合兼容别名：`create_strategy`、`list_strategies`、`get_strategy`、`update_strategy`、`set_strategy_opening_snapshot`、`get_strategy_opening_snapshot`、`delete_strategy_opening_snapshot`、`get_strategy_trades`、`get_strategy_positions`、`add_strategy_trade`
 
 MCP 不暴露 Celery 调度、后台同步等运维接口；这些任务由 Beat/Worker 按配置自动执行。
