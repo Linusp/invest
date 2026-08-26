@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from .api import (
     assets_router,
     exchange_rates_router,
+    market_scopes_router,
     portfolios_router,
     strategies_router,
     tags_router,
@@ -32,6 +33,8 @@ from .services import (
     AssetNotFound,
     ExchangeRateUnavailable,
     InvalidTrade,
+    MarketScopeInUse,
+    MarketScopeNotFound,
     MarketService,
     StrategyNotFound,
     TagNotFound,
@@ -137,6 +140,7 @@ def create_app(
     @app.exception_handler(AssetNotFound)
     @app.exception_handler(StrategyNotFound)
     @app.exception_handler(TagNotFound)
+    @app.exception_handler(MarketScopeNotFound)
     async def not_found_handler(_, exc):
         return _error_response(404, str(exc))
 
@@ -145,6 +149,7 @@ def create_app(
         return _error_response(409, str(exc))
 
     @app.exception_handler(InvalidTrade)
+    @app.exception_handler(MarketScopeInUse)
     @app.exception_handler(IntegrityError)
     async def conflict_handler(_, exc):
         return _error_response(409, str(exc))
@@ -159,6 +164,7 @@ def create_app(
 
     app.include_router(assets_router, prefix="/api/v1")
     app.include_router(exchange_rates_router, prefix="/api/v1")
+    app.include_router(market_scopes_router, prefix="/api/v1")
     app.include_router(portfolios_router, prefix="/api/v1")
     app.include_router(strategies_router, prefix="/api/v1")
     app.include_router(tags_router, prefix="/api/v1")

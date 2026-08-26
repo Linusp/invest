@@ -8,12 +8,15 @@ from sqlalchemy.orm import sessionmaker
 
 from .config import get_settings
 from .database import SessionLocal
-from .models import AssetCategory, TradeType
+from .models import AssetCategory, MarketScopeType, TradeType
 from .providers import MarketDataProvider, make_market_provider
 from .schemas import (
     AssetCreate,
     AssetTagCreate,
     AssetTagsUpdate,
+    MarketScopeCreate,
+    MarketScopeRead,
+    MarketScopeUpdate,
     MarketUpdateTriggerRead,
     OpeningBalanceUpsert,
     OpeningPositionCreate,
@@ -23,7 +26,7 @@ from .schemas import (
     StrategyUpdate,
     TradeCreate,
 )
-from .services import MarketService, StrategyService
+from .services import MarketScopeService, MarketService, StrategyService
 from .services.exchange_rate import ExchangeRateService
 
 
@@ -59,6 +62,9 @@ def build_mcp(
 
     def strategies(session):
         return StrategyService(session, reporting_currency)
+
+    def market_scopes(session):
+        return MarketScopeService(session)
 
     @mcp.tool()
     def search_assets(query: str, category: str | None = None, limit: int = 15) -> list[dict]:
@@ -258,6 +264,77 @@ def build_mcp(
                 currency, date.fromisoformat(on_date) if on_date else None
             )
             return _json(ExchangeRateRead.model_validate(rate))
+
+    @mcp.tool()
+    def create_market_scope(
+        code: str,
+        name: str,
+        scope_type: str,
+        parent_code: str | None = None,
+        description: str | None = None,
+    ) -> dict:
+        """Create a market, sector, theme or commodity scope."""
+        with session_factory() as session:
+            scope = market_scopes(session).create(
+                MarketScopeCreate(
+                    code=code,
+                    name=name,
+                    scope_type=MarketScopeType(scope_type),
+                    parent_code=parent_code,
+                    description=description,
+                )
+            )
+            return _json(MarketScopeRead.model_validate(scope))
+
+    @mcp.tool()
+    def list_market_scopes(
+        scope_type: str | None = None, parent_code: str | None = None
+    ) -> list[dict]:
+        """List market scopes, optionally filtered by type or parent."""
+        with session_factory() as session:
+            scopes = market_scopes(session).list(
+                MarketScopeType(scope_type) if scope_type else None,
+                parent_code.strip().upper() if parent_code else None,
+            )
+            return [_json(MarketScopeRead.model_validate(item)) for item in scopes]
+
+    @mcp.tool()
+    def get_market_scope(code: str) -> dict:
+        """Get one market scope by its stable code."""
+        with session_factory() as session:
+            scope = market_scopes(session).get(code)
+            return _json(MarketScopeRead.model_validate(scope))
+
+    @mcp.tool()
+    def update_market_scope(
+        code: str,
+        name: str | None = None,
+        scope_type: str | None = None,
+        parent_code: str | None = None,
+        description: str | None = None,
+    ) -> dict:
+        """Update market scope metadata or hierarchy."""
+        changes = {
+            key: value
+            for key, value in {
+                "name": name,
+                "scope_type": MarketScopeType(scope_type) if scope_type else None,
+                "parent_code": parent_code,
+                "description": description,
+            }.items()
+            if value is not None
+        }
+        with session_factory() as session:
+            scope = market_scopes(session).update(
+                code, MarketScopeUpdate(**changes)
+            )
+            return _json(MarketScopeRead.model_validate(scope))
+
+    @mcp.tool()
+    def delete_market_scope(code: str) -> None:
+        """Delete an empty market scope."""
+        with session_factory() as session:
+            market_scopes(session).delete(code)
 
     @mcp.tool()
     def create_portfolio(

@@ -39,6 +39,13 @@ class AssetCategory(str, enum.Enum):
     INDEX = "index"
 
 
+class MarketScopeType(str, enum.Enum):
+    MARKET = "market"
+    SECTOR = "sector"
+    THEME = "theme"
+    COMMODITY = "commodity"
+
+
 def asset_identity(category: AssetCategory | str, symbol: str) -> str:
     category_value = (
         category.value
@@ -54,6 +61,26 @@ class TradeType(str, enum.Enum):
     SELL = "sell"
     DEPOSIT = "deposit"
     WITHDRAW = "withdraw"
+
+
+class MarketScope(Base):
+    __tablename__ = "market_scopes"
+
+    code: Mapped[str] = mapped_column(String(128), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), index=True)
+    scope_type: Mapped[MarketScopeType] = mapped_column(
+        Enum(MarketScopeType), index=True
+    )
+    parent_code: Mapped[str | None] = mapped_column(
+        ForeignKey("market_scopes.code", ondelete="RESTRICT"), index=True
+    )
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 asset_tags = Table(

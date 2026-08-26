@@ -3,11 +3,55 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .models import AssetCategory, TradeType
+from .models import AssetCategory, MarketScopeType, TradeType
 
 
 class APIModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
+
+def normalize_market_scope_code(value: str) -> str:
+    code = value.strip().upper()
+    if not code or any(not (part.replace("_", "").isalnum()) for part in code.split(".")):
+        raise ValueError(
+            "market scope code must contain dot-separated letters, numbers or underscores"
+        )
+    return code
+
+
+class MarketScopeCreate(APIModel):
+    code: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=255)
+    scope_type: MarketScopeType
+    parent_code: str | None = Field(default=None, max_length=128)
+    description: str | None = None
+
+    @field_validator("code", "parent_code")
+    @classmethod
+    def validate_code(cls, value: str | None) -> str | None:
+        return normalize_market_scope_code(value) if value is not None else None
+
+
+class MarketScopeUpdate(APIModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    scope_type: MarketScopeType | None = None
+    parent_code: str | None = Field(default=None, max_length=128)
+    description: str | None = None
+
+    @field_validator("parent_code")
+    @classmethod
+    def validate_parent_code(cls, value: str | None) -> str | None:
+        return normalize_market_scope_code(value) if value is not None else None
+
+
+class MarketScopeRead(APIModel):
+    code: str
+    name: str
+    scope_type: MarketScopeType
+    parent_code: str | None
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class AssetCreate(APIModel):
