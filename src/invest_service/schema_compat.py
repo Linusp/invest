@@ -131,7 +131,6 @@ def prepare_legacy_schema(engine: Engine) -> None:
             item["name"] for item in inspector.get_columns("strategies")
         }
         additions = {
-            "initial_capital": "NUMERIC(24, 6)",
             "investment_style": "VARCHAR(64)",
             "is_owned": "BOOLEAN NOT NULL DEFAULT TRUE",
             "purpose": "TEXT",

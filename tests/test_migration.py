@@ -85,7 +85,6 @@ def test_upgrades_legacy_currency_and_opening_snapshot_schema(tmp_path):
         item["name"] for item in inspect(engine).get_columns("strategies")
     }
     assert {
-        "initial_capital",
         "investment_style",
         "is_owned",
         "purpose",

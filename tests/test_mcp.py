@@ -62,7 +62,6 @@ def test_mcp_tools_execute_market_and_strategy_workflows(session_factory, provid
         "create_portfolio",
         {
             "name": "MCP portfolio",
-            "initial_capital": 100000,
             "investment_style": "稳健",
             "is_owned": True,
             "purpose": "养老",
@@ -71,7 +70,6 @@ def test_mcp_tools_execute_market_and_strategy_workflows(session_factory, provid
             "notes": "年度复盘",
         },
     )
-    assert strategy["initial_capital"] == "100000.000000"
     assert strategy["investment_style"] == "稳健"
     assert call_tool(mcp, "list_portfolios", {})[0]["id"] == strategy["id"]
     updated = call_tool(

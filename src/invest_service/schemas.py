@@ -499,7 +499,6 @@ class BulkSyncResult(APIModel):
 class StrategyCreate(APIModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
-    initial_capital: Decimal | None = Field(default=None, ge=0)
     investment_style: str | None = Field(default=None, max_length=64)
     is_owned: bool = True
     purpose: str | None = None
@@ -511,7 +510,6 @@ class StrategyCreate(APIModel):
 class StrategyUpdate(APIModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
-    initial_capital: Decimal | None = Field(default=None, ge=0)
     investment_style: str | None = Field(default=None, max_length=64)
     is_owned: bool | None = None
     purpose: str | None = None
@@ -524,7 +522,6 @@ class StrategyRead(APIModel):
     id: str
     name: str
     description: str | None
-    initial_capital: Decimal | None
     investment_style: str | None
     is_owned: bool
     purpose: str | None

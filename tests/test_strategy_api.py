@@ -139,7 +139,6 @@ def test_portfolio_api_maintains_portfolio_metadata_and_strategy_compatibility(c
         json={
             "name": "银河证券",
             "description": "兼容说明",
-            "initial_capital": "500000",
             "investment_style": "稳健",
             "is_owned": True,
             "purpose": "家庭长期资产",
@@ -151,7 +150,6 @@ def test_portfolio_api_maintains_portfolio_metadata_and_strategy_compatibility(c
 
     assert created.status_code == 201
     portfolio = created.json()
-    assert portfolio["initial_capital"] == "500000.000000"
     assert portfolio["investment_style"] == "稳健"
     assert portfolio["is_owned"] is True
     assert portfolio["purpose"] == "家庭长期资产"
@@ -161,19 +159,16 @@ def test_portfolio_api_maintains_portfolio_metadata_and_strategy_compatibility(c
 
     strategy = client.get(f"/api/v1/strategies/{portfolio['id']}")
     assert strategy.status_code == 200
-    assert strategy.json()["initial_capital"] == "500000.000000"
 
     updated = client.patch(
         f"/api/v1/portfolios/{portfolio['id']}",
         json={
-            "initial_capital": "600000",
             "investment_style": "均衡",
             "is_owned": False,
             "constraints": None,
         },
     )
     assert updated.status_code == 200
-    assert updated.json()["initial_capital"] == "600000.000000"
     assert updated.json()["investment_style"] == "均衡"
     assert updated.json()["is_owned"] is False
     assert updated.json()["constraints"] is None
@@ -196,7 +191,6 @@ def test_web_strategy_page_uses_server_api(client):
     assert 'data-tab="commentary"' in page.text
     assert 'data-tab="trade-plans"' in page.text
     assert 'id="portfolio-info-dialog"' in page.text
-    assert 'id="metric-initial-capital"' in page.text
     assert 'id="positions-query"' in page.text
     assert 'id="trades-type"' in page.text
     assert 'id="plans-status"' in page.text

@@ -46,7 +46,6 @@
         <div class="metric-grid sensitive">
             <div class="metric"><span>总资产</span><strong id="metric-total">--</strong></div>
             <div class="metric"><span>净投入</span><strong id="metric-principal">--</strong></div>
-            <div class="metric"><span>初始本金</span><strong id="metric-initial-capital">--</strong></div>
             <div class="metric"><span>现金</span><strong id="metric-cash">--</strong></div>
             <div class="metric"><span>持仓市值</span><strong id="metric-market">--</strong></div>
             <div class="metric"><span>总收益</span><strong id="metric-profit">--</strong></div>
@@ -123,10 +122,6 @@
             <label class="field">
                 <span class="label">描述</span>
                 <textarea id="strategy-description" class="textarea" maxlength="2000"></textarea>
-            </label>
-            <label class="field">
-                <span class="label">初始本金</span>
-                <input id="strategy-initial-capital" class="input" type="number" min="0" step="0.01">
             </label>
             <label class="field">
                 <span class="label">投资风格</span>
@@ -466,8 +461,6 @@
         const summary = detail.summary;
         const currency = summary.reporting_currency;
         $("profile-style").textContent = detail.investment_style || "--";
-        $("metric-initial-capital").textContent = detail.initial_capital == null
-            ? "--" : money(detail.initial_capital, currency);
         $("profile-owned").textContent = detail.is_owned ? "自有资产" : "代管 / 其他";
         $("profile-purpose").textContent = detail.purpose || "--";
         $("profile-direction").textContent = detail.investment_direction || "--";
@@ -563,7 +556,6 @@
         $("strategy-dialog-title").textContent = editing ? "编辑组合" : "创建组合";
         $("strategy-name").value = editing ? state.detail.name : "";
         $("strategy-description").value = editing ? state.detail.description || "" : "";
-        $("strategy-initial-capital").value = editing ? state.detail.initial_capital || "" : "";
         $("strategy-investment-style").value = editing ? state.detail.investment_style || "" : "";
         $("strategy-is-owned").checked = editing ? state.detail.is_owned : true;
         $("strategy-purpose").value = editing ? state.detail.purpose || "" : "";
@@ -578,7 +570,6 @@
         const payload = {
             name: $("strategy-name").value.trim(),
             description: $("strategy-description").value.trim() || null,
-            initial_capital: $("strategy-initial-capital").value || null,
             investment_style: $("strategy-investment-style").value.trim() || null,
             is_owned: $("strategy-is-owned").checked,
             purpose: $("strategy-purpose").value.trim() || null,

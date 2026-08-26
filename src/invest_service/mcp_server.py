@@ -798,7 +798,6 @@ def build_mcp(
     def create_portfolio(
         name: str,
         description: str | None = None,
-        initial_capital: float | None = None,
         investment_style: str | None = None,
         is_owned: bool = True,
         purpose: str | None = None,
@@ -812,11 +811,6 @@ def build_mcp(
                 StrategyCreate(
                     name=name,
                     description=description,
-                    initial_capital=(
-                        Decimal(str(initial_capital))
-                        if initial_capital is not None
-                        else None
-                    ),
                     investment_style=investment_style,
                     is_owned=is_owned,
                     purpose=purpose,
@@ -844,7 +838,6 @@ def build_mcp(
         portfolio_id: str,
         name: str | None = None,
         description: str | None = None,
-        initial_capital: float | None = None,
         investment_style: str | None = None,
         is_owned: bool | None = None,
         purpose: str | None = None,
@@ -865,8 +858,6 @@ def build_mcp(
             "notes": notes,
         }
         changes.update({key: value for key, value in values.items() if value is not None})
-        if initial_capital is not None:
-            changes["initial_capital"] = Decimal(str(initial_capital))
         with session_factory() as session:
             strategy = strategies(session).update(
                 portfolio_id, StrategyUpdate(**changes)
