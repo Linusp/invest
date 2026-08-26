@@ -4,6 +4,7 @@ from .information import InformationNotFound, InformationService
 from .market import AssetNotFound, MarketService, TagNotFound
 from .market_scope import MarketScopeInUse, MarketScopeNotFound, MarketScopeService
 from .strategy import InvalidTrade, StrategyNotFound, StrategyService
+from .trade_plan import InvalidTradePlan, TradePlanNotFound, TradePlanService
 
 __all__ = [
     "AssetNotFound",
@@ -20,5 +21,8 @@ __all__ = [
     "MarketScopeService",
     "StrategyNotFound",
     "StrategyService",
+    "InvalidTradePlan",
+    "TradePlanNotFound",
+    "TradePlanService",
     "TagNotFound",
 ]

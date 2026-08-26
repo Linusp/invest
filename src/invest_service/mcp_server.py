@@ -15,6 +15,9 @@ from .models import (
     CommentarySubjectType,
     InformationType,
     MarketScopeType,
+    TradePlanAction,
+    TradePlanLogic,
+    TradePlanStatus,
     TradeType,
 )
 from .providers import MarketDataProvider, make_market_provider
@@ -37,6 +40,10 @@ from .schemas import (
     StrategyCreate,
     StrategyUpdate,
     TradeCreate,
+    TradePlanCondition,
+    TradePlanCreate,
+    TradePlanStatusUpdate,
+    TradePlanUpdate,
 )
 from .services import (
     CommentaryService,
@@ -44,6 +51,7 @@ from .services import (
     MarketScopeService,
     MarketService,
     StrategyService,
+    TradePlanService,
 )
 from .services.exchange_rate import ExchangeRateService
 
@@ -89,6 +97,9 @@ def build_mcp(
 
     def information(session):
         return InformationService(session)
+
+    def trade_plans(session):
+        return TradePlanService(session)
 
     @mcp.tool()
     def search_assets(query: str, category: str | None = None, limit: int = 15) -> list[dict]:
@@ -608,6 +619,124 @@ def build_mcp(
         with session_factory() as database_session:
             items = information(database_session).for_commentary(commentary_id)
             return [_information_for_mcp(item, output_format) for item in items]
+
+    @mcp.tool()
+    def create_trade_plan(
+        portfolio_id: str,
+        asset_symbol: str,
+        asset_category: str,
+        action: str,
+        conditions: list[dict[str, Any]],
+        quantity: float | None = None,
+        amount: float | None = None,
+        position_ratio: float | None = None,
+        logic: str = "and",
+        confirm_days: int = 1,
+        valid_from: str | None = None,
+        valid_until: str | None = None,
+        reason: str | None = None,
+        risk_note: str | None = None,
+        source_commentary_id: str | None = None,
+        status: str = "draft",
+    ) -> dict:
+        """Create a buy/sell plan; triggering never creates a trade automatically."""
+        payload = TradePlanCreate(
+            portfolio_id=portfolio_id,
+            asset_symbol=asset_symbol,
+            asset_category=AssetCategory(asset_category),
+            action=TradePlanAction(action),
+            logic=TradePlanLogic(logic),
+            conditions=[TradePlanCondition(**item) for item in conditions],
+            quantity=Decimal(str(quantity)) if quantity is not None else None,
+            amount=Decimal(str(amount)) if amount is not None else None,
+            position_ratio=(
+                Decimal(str(position_ratio)) if position_ratio is not None else None
+            ),
+            confirm_days=confirm_days,
+            valid_from=date.fromisoformat(valid_from) if valid_from else None,
+            valid_until=date.fromisoformat(valid_until) if valid_until else None,
+            reason=reason,
+            risk_note=risk_note,
+            source_commentary_id=source_commentary_id,
+            status=TradePlanStatus(status),
+        )
+        with session_factory() as database_session:
+            return _json(trade_plans(database_session).create(payload).model_dump(mode="json"))
+
+    @mcp.tool()
+    def list_trade_plans(
+        portfolio_id: str | None = None,
+        asset_symbol: str | None = None,
+        asset_category: str | None = None,
+        status: str | None = None,
+        as_of: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        """List plans by portfolio, asset, status or effective date."""
+        with session_factory() as database_session:
+            items = trade_plans(database_session).list(
+                portfolio_id,
+                asset_symbol,
+                AssetCategory(asset_category) if asset_category else None,
+                TradePlanStatus(status) if status else None,
+                date.fromisoformat(as_of) if as_of else None,
+                limit,
+                offset,
+            )
+            return [_json(item.model_dump(mode="json")) for item in items]
+
+    @mcp.tool()
+    def get_trade_plan(plan_id: str) -> dict:
+        """Get one trade plan and its current lifecycle status."""
+        with session_factory() as database_session:
+            return _json(
+                trade_plans(database_session).get(plan_id).model_dump(mode="json")
+            )
+
+    @mcp.tool()
+    def update_trade_plan(
+        plan_id: str,
+        action: str | None = None,
+        logic: str | None = None,
+        conditions: list[dict[str, Any]] | None = None,
+        quantity: float | None = None,
+        amount: float | None = None,
+        position_ratio: float | None = None,
+        confirm_days: int | None = None,
+        reason: str | None = None,
+        risk_note: str | None = None,
+    ) -> dict:
+        """Modify a draft trade plan."""
+        payload = TradePlanUpdate(
+            action=TradePlanAction(action) if action else None,
+            logic=TradePlanLogic(logic) if logic else None,
+            conditions=[TradePlanCondition(**item) for item in conditions]
+            if conditions is not None
+            else None,
+            quantity=Decimal(str(quantity)) if quantity is not None else None,
+            amount=Decimal(str(amount)) if amount is not None else None,
+            position_ratio=(
+                Decimal(str(position_ratio)) if position_ratio is not None else None
+            ),
+            confirm_days=confirm_days,
+            reason=reason,
+            risk_note=risk_note,
+        )
+        with session_factory() as database_session:
+            return _json(
+                trade_plans(database_session).update(plan_id, payload).model_dump(mode="json")
+            )
+
+    @mcp.tool()
+    def change_trade_plan_status(plan_id: str, status: str) -> dict:
+        """Move a plan through its lifecycle; this never writes a trade."""
+        with session_factory() as database_session:
+            return _json(
+                trade_plans(database_session)
+                .change_status(plan_id, TradePlanStatusUpdate(status=TradePlanStatus(status)))
+                .model_dump(mode="json")
+            )
 
     @mcp.tool()
     def create_portfolio(

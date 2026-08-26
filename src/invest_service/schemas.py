@@ -12,6 +12,9 @@ from .models import (
     CommentarySubjectType,
     InformationType,
     MarketScopeType,
+    TradePlanAction,
+    TradePlanLogic,
+    TradePlanStatus,
     TradeType,
 )
 
@@ -215,6 +218,82 @@ class InformationRead(APIModel):
     assets: list[InformationAssetRef]
     is_referenced: bool
     created_at: datetime
+
+
+class TradePlanCondition(APIModel):
+    type: str = Field(min_length=1, max_length=64)
+    value: Any
+    label: str | None = None
+    params: dict[str, Any] | None = None
+
+
+class TradePlanCreate(APIModel):
+    portfolio_id: str
+    asset_symbol: str = Field(min_length=1, max_length=32)
+    asset_category: AssetCategory
+    action: TradePlanAction
+    logic: TradePlanLogic = TradePlanLogic.AND
+    conditions: list[TradePlanCondition] = Field(min_length=1, max_length=20)
+    quantity: Decimal | None = Field(default=None, gt=0)
+    amount: Decimal | None = Field(default=None, gt=0)
+    position_ratio: Decimal | None = Field(default=None, gt=0, le=1)
+    confirm_days: int = Field(default=1, ge=1, le=365)
+    valid_from: date | None = None
+    valid_until: date | None = None
+    reason: str | None = None
+    risk_note: str | None = None
+    source_commentary_id: str | None = None
+    status: TradePlanStatus = TradePlanStatus.DRAFT
+
+    @model_validator(mode="after")
+    def validate_shape(self):
+        if self.quantity is None and self.amount is None and self.position_ratio is None:
+            raise ValueError("trade plan requires quantity, amount or position_ratio")
+        if self.valid_from and self.valid_until and self.valid_until < self.valid_from:
+            raise ValueError("valid_until must not be before valid_from")
+        return self
+
+
+class TradePlanUpdate(APIModel):
+    action: TradePlanAction | None = None
+    logic: TradePlanLogic | None = None
+    conditions: list[TradePlanCondition] | None = Field(default=None, min_length=1, max_length=20)
+    quantity: Decimal | None = Field(default=None, gt=0)
+    amount: Decimal | None = Field(default=None, gt=0)
+    position_ratio: Decimal | None = Field(default=None, gt=0, le=1)
+    confirm_days: int | None = Field(default=None, ge=1, le=365)
+    valid_from: date | None = None
+    valid_until: date | None = None
+    reason: str | None = None
+    risk_note: str | None = None
+    source_commentary_id: str | None = None
+
+
+class TradePlanStatusUpdate(APIModel):
+    status: TradePlanStatus
+
+
+class TradePlanRead(APIModel):
+    id: str
+    portfolio_id: str
+    asset_symbol: str
+    asset_category: AssetCategory
+    action: TradePlanAction
+    logic: TradePlanLogic
+    conditions: list[TradePlanCondition]
+    quantity: Decimal | None
+    amount: Decimal | None
+    position_ratio: Decimal | None
+    confirm_days: int
+    valid_from: date | None
+    valid_until: date | None
+    reason: str | None
+    risk_note: str | None
+    source_commentary_id: str | None
+    status: TradePlanStatus
+    triggered_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
 
 
 class AssetCreate(APIModel):

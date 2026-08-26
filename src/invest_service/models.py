@@ -76,6 +76,26 @@ class InformationType(str, enum.Enum):
     EVENT = "event"
 
 
+class TradePlanAction(str, enum.Enum):
+    BUY = "buy"
+    SELL = "sell"
+
+
+class TradePlanLogic(str, enum.Enum):
+    AND = "and"
+    OR = "or"
+
+
+class TradePlanStatus(str, enum.Enum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    TRIGGERED = "triggered"
+    PARTIALLY_EXECUTED = "partially_executed"
+    EXECUTED = "executed"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
 def asset_identity(category: AssetCategory | str, symbol: str) -> str:
     category_value = (
         category.value
@@ -444,6 +464,52 @@ class Information(Base):
     commentaries: Mapped[list[Commentary]] = relationship(
         secondary=commentary_information, lazy="selectin"  # codespell:ignore selectin
     )
+
+
+class TradePlan(Base):
+    __tablename__ = "trade_plans"
+    __table_args__ = (
+        Index("ix_trade_plans_portfolio_status", "strategy_id", "status"),
+        Index("ix_trade_plans_asset_status", "asset_symbol", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    portfolio_id: Mapped[str] = mapped_column(
+        "strategy_id", ForeignKey("strategies.id", ondelete="CASCADE"), index=True
+    )
+    asset_key: Mapped[str] = mapped_column(
+        "asset_symbol", ForeignKey("assets.symbol", ondelete="CASCADE"), index=True
+    )
+    action: Mapped[TradePlanAction] = mapped_column(
+        Enum(TradePlanAction, native_enum=False)
+    )
+    logic: Mapped[TradePlanLogic] = mapped_column(
+        Enum(TradePlanLogic, native_enum=False), default=TradePlanLogic.AND
+    )
+    conditions: Mapped[list] = mapped_column(JSON)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(24, 6))
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(24, 6))
+    position_ratio: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
+    confirm_days: Mapped[int] = mapped_column(Integer, default=1)
+    valid_from: Mapped[date | None] = mapped_column(Date)
+    valid_until: Mapped[date | None] = mapped_column(Date)
+    reason: Mapped[str | None] = mapped_column(Text)
+    risk_note: Mapped[str | None] = mapped_column(Text)
+    source_commentary_id: Mapped[str | None] = mapped_column(
+        ForeignKey("commentaries.id", ondelete="SET NULL"), index=True
+    )
+    status: Mapped[TradePlanStatus] = mapped_column(
+        Enum(TradePlanStatus, native_enum=False), index=True, default=TradePlanStatus.DRAFT
+    )
+    triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    asset: Mapped[Asset] = relationship()
 
 
 class OpeningSnapshot(Base):
