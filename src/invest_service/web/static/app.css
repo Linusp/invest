@@ -129,6 +129,11 @@ svg { width: 18px; height: 18px; flex: none; }
 .portfolio-profile div { min-width: 0; }
 .portfolio-profile span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
 .portfolio-profile strong { display: block; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.portfolio-profile { align-items: center; }
+.portfolio-profile > .icon-button { margin-left: auto; }
+.portfolio-info-grid { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); gap: 18px 28px; }
+.portfolio-info-grid span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+.portfolio-info-grid strong { display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
 .commentary-panel { margin-top: 18px; }
 .commentary-header { align-items: center; }
 .commentary-list { display: grid; gap: 12px; }

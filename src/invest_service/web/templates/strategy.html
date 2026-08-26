@@ -44,17 +44,13 @@
 
     <section id="strategy-detail" hidden>
         <div class="panel portfolio-profile">
-            <div><span>投资风格</span><strong id="profile-style">--</strong></div>
-            <div><span>初始本金</span><strong id="profile-capital" class="sensitive">--</strong></div>
-            <div><span>资产归属</span><strong id="profile-owned">--</strong></div>
-            <div><span>用途</span><strong id="profile-purpose">--</strong></div>
-            <div><span>投资方向</span><strong id="profile-direction">--</strong></div>
-            <div><span>约束条件</span><strong id="profile-constraints">--</strong></div>
-            <div><span>备注</span><strong id="profile-notes">--</strong></div>
+            <div><span>组合</span><strong id="profile-name">--</strong></div>
+            <button id="portfolio-info" class="icon-button" type="button" title="查看组合详情" aria-label="查看组合详情"><i data-lucide="info"></i></button>
         </div>
         <div class="metric-grid sensitive">
             <div class="metric"><span>总资产</span><strong id="metric-total">--</strong></div>
             <div class="metric"><span>净投入</span><strong id="metric-principal">--</strong></div>
+            <div class="metric"><span>初始本金</span><strong id="metric-initial-capital">--</strong></div>
             <div class="metric"><span>现金</span><strong id="metric-cash">--</strong></div>
             <div class="metric"><span>持仓市值</span><strong id="metric-market">--</strong></div>
             <div class="metric"><span>总收益</span><strong id="metric-profit">--</strong></div>
@@ -68,6 +64,8 @@
                 <div class="segmented" role="tablist">
                     <button class="active" type="button" data-tab="positions">持仓</button>
                     <button type="button" data-tab="trades">交易记录</button>
+                    <button type="button" data-tab="commentary">组合点评</button>
+                    <button type="button" data-tab="trade-plans">交易计划</button>
                 </div>
             </div>
 
@@ -91,14 +89,26 @@
                     <tbody id="trades-body"></tbody>
                 </table>
             </div>
-        </div>
-        <div id="portfolio-commentary"></div>
-        <div id="trade-plans" class="panel trade-plans" hidden>
-            <div class="panel-header"><div><h2 class="panel-title">交易计划</h2><span class="muted">触发后仅进入待确认，不自动下单</span></div></div>
+            <div id="commentary-tab" hidden><div id="portfolio-commentary"></div></div>
+            <div id="trade-plans-tab" hidden>
+              <div id="trade-plans" class="trade-plans" hidden>
+                <div class="panel-header"><div><h2 class="panel-title">交易计划</h2><span class="muted">触发后仅进入待确认，不自动下单</span></div></div>
             <div class="table-wrap"><table class="data-table"><thead><tr><th>标的</th><th>动作</th><th>条件</th><th>规模</th><th>有效期</th><th>状态</th></tr></thead><tbody id="trade-plans-body"></tbody></table></div>
+              </div>
+              <div id="trade-plans-empty" class="empty-state compact" hidden>暂无交易计划</div>
+            </div>
         </div>
     </section>
 </div>
+
+<dialog id="portfolio-info-dialog">
+    <div class="dialog-header"><h2>组合详情</h2><button id="portfolio-info-close" class="icon-button" type="button" aria-label="关闭"><i data-lucide="x"></i></button></div>
+    <div class="dialog-body portfolio-info-grid">
+        <div><span>投资风格</span><strong id="profile-style">--</strong></div><div><span>资产归属</span><strong id="profile-owned">--</strong></div>
+        <div><span>用途</span><strong id="profile-purpose">--</strong></div><div><span>投资方向</span><strong id="profile-direction">--</strong></div>
+        <div><span>约束条件</span><strong id="profile-constraints">--</strong></div><div><span>备注</span><strong id="profile-notes">--</strong></div>
+    </div>
+</dialog>
 
 <dialog id="strategy-dialog">
     <form id="strategy-form">
@@ -364,6 +374,7 @@
     async function loadTradePlans(portfolioId) {
         const plans = await api("/trade-plans?portfolio_id=" + encodeURIComponent(portfolioId));
         $("trade-plans").hidden = plans.length === 0;
+        $("trade-plans-empty").hidden = plans.length !== 0;
         $("trade-plans-body").innerHTML = plans.length ? plans.map(plan => `
             <tr><td><div class="asset-name">${escapeHtml(plan.asset_symbol)}</div><div class="asset-code">${escapeHtml(plan.asset_category)}</div></td>
                 <td><span class="badge">${actionLabels[plan.action]}</span></td>
@@ -387,8 +398,9 @@
         const detail = state.detail;
         const summary = detail.summary;
         const currency = summary.reporting_currency;
+        $("profile-name").textContent = detail.name;
         $("profile-style").textContent = detail.investment_style || "--";
-        $("profile-capital").textContent = detail.initial_capital == null
+        $("metric-initial-capital").textContent = detail.initial_capital == null
             ? "--" : money(detail.initial_capital, currency);
         $("profile-owned").textContent = detail.is_owned ? "自有资产" : "代管 / 其他";
         $("profile-purpose").textContent = detail.purpose || "--";
@@ -784,8 +796,12 @@
             document.querySelectorAll("[data-tab]").forEach(item => item.classList.toggle("active", item === button));
             $("positions-tab").hidden = button.dataset.tab !== "positions";
             $("trades-tab").hidden = button.dataset.tab !== "trades";
+            $("commentary-tab").hidden = button.dataset.tab !== "commentary";
+            $("trade-plans-tab").hidden = button.dataset.tab !== "trade-plans";
         });
     });
+    $("portfolio-info").addEventListener("click", () => $("portfolio-info-dialog").showModal());
+    $("portfolio-info-close").addEventListener("click", () => $("portfolio-info-dialog").close());
     $("new-strategy").addEventListener("click", () => openStrategyDialog(false));
     $("empty-create").addEventListener("click", () => openStrategyDialog(false));
     $("edit-strategy").addEventListener("click", () => openStrategyDialog(true));
