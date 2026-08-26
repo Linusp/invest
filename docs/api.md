@@ -48,11 +48,11 @@
 
 ## 交易计划
 
-`/trade-plans` 管理组合内的买卖计划。每条计划明确归属组合和 `category + symbol` 标的，规模至少填写数量、金额或仓位比例之一；条件支持 `and`/`or`，可配置连续满足交易日数。状态通过 `POST /trade-plans/{id}/status` 显式流转，触发只产生待确认状态，不会自动写入交易流水。交易流水可通过 `trade_plan_id` 显式关联计划，系统会校验组合和标的一致；计划执行后可通过 `/trade-plans/{id}/review` 保存结构化复盘。组合页会展示计划列表。
+`/trade-plans` 管理组合内的买卖计划。每条计划明确归属组合和 `category + symbol` 标的，规模至少填写数量、金额或仓位比例之一；条件支持 `and`/`or`，可配置连续满足交易日数。状态通过 `POST /trade-plans/{id}/status` 显式流转，触发只产生待确认状态，不会自动写入交易流水；`GET /trade-plans/{id}/history` 提供不可变状态审计历史。交易流水可通过 `trade_plan_id` 显式关联计划，系统会校验组合和标的一致；计划执行后可通过 `/trade-plans/{id}/review` 保存结构化复盘。组合页会展示计划列表。
 
 ## MCP 工具覆盖
 
-MCP 与上述业务接口保持同一套服务层逻辑，当前提供 60 个工具：
+MCP 与上述业务接口保持同一套服务层逻辑，当前提供 61 个工具：
 
 - 标的：`search_assets`、`list_assets`、`get_asset`、`register_asset`、`refresh_asset_market_data`、`get_market_history`、`set_asset_favorite`
 - 自选与分组：`list_asset_tags`、`update_asset_tags`、`add_asset_tag`、`remove_asset_tag`、`list_tags`、`create_tag`、`delete_tag`、`reorder_tags`、`pin_tag`、`list_tag_assets`
@@ -64,5 +64,6 @@ MCP 与上述业务接口保持同一套服务层逻辑，当前提供 60 个工
 - 资讯：`submit_information`、`list_information`、`get_information`、`link_information_to_commentary`、`unlink_information_from_commentary`、`list_commentary_information`
 - 交易计划：`create_trade_plan`、`list_trade_plans`、`get_trade_plan`、`update_trade_plan`、`change_trade_plan_status`
 - 计划复盘：`review_trade_plan`、`get_trade_plan_review`
+- 计划审计：`get_trade_plan_history`
 
 MCP 不暴露 Celery 调度、后台同步等运维接口；这些任务由 Beat/Worker 按配置自动执行。
