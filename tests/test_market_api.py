@@ -449,12 +449,16 @@ def test_web_market_group_and_asset_pages(client):
         assert label in detail.text
     assert 'id="global-market-query"' in detail.text
     assert 'id="market-query"' not in detail.text
+    assert 'id="asset-commentary"' in detail.text
+    assert 'subject_type: "asset"' in detail.text
+    assert "/static/commentary.js" in detail.text
 
     legacy = client.get("/market?symbol=600000.SH", follow_redirects=False)
     assert legacy.status_code in (302, 307)
     assert legacy.headers["location"] == "/market/stock/600000.SH"
 
     assert client.get("/static/app.css").status_code == 200
+    assert client.get("/static/commentary.js").status_code == 200
     assert client.get("/static/vendor/lucide-0.468.0.min.js").status_code == 200
     echarts = client.get(
         "/static/vendor/echarts-5.4.3.min.js",

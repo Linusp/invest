@@ -69,6 +69,7 @@
         </table>
     </div>
 </section>
+<div id="asset-commentary"></div>
 
 <dialog id="tag-dialog" class="dialog-wide">
     <div>
@@ -127,6 +128,7 @@
 </dialog>
 {% endblock %}
 {% block scripts %}
+<script src="/static/commentary.js?v=20260826-1"></script>
 <script>
 (() => {
     const symbol = {{ symbol | tojson }};
@@ -140,6 +142,9 @@
         tagMemberships: [],
     };
     const $ = (id) => document.getElementById(id);
+    const commentaryTimeline = window.CommentaryTimeline.mount({
+        container: "#asset-commentary", title: "标的点评",
+    });
     const categoryLabel = {stock: "个股", etf: "ETF", index: "指数"};
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, character => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
@@ -220,6 +225,10 @@
         );
         renderAsset();
         await loadHistory(true);
+        await commentaryTimeline.setSubject({
+            subject_type: "asset", asset_symbol: state.asset.symbol,
+            asset_category: state.asset.category,
+        });
     }
 
     async function addFavorite() {

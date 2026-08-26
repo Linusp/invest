@@ -84,3 +84,8 @@ def _legacy_category(request: Request, symbol: str) -> AssetCategory:
 @router.get("/strategy", response_class=HTMLResponse)
 def strategy(request: Request):
     return templates.TemplateResponse(request=request, name="strategy.html")
+
+
+@router.get("/analysis", response_class=HTMLResponse)
+def analysis(request: Request):
+    return templates.TemplateResponse(request=request, name="analysis.html")

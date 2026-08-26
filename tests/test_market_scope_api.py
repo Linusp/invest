@@ -131,3 +131,13 @@ def test_market_scope_mcp_tools_share_the_same_registry(session_factory, provide
     assert len(_call_tool(mcp, "list_market_scopes", {})) == 1
     _call_tool(mcp, "delete_market_scope", {"code": "GLOBAL.GOLD"})
     assert _call_tool(mcp, "list_market_scopes", {}) == []
+
+
+def test_market_scope_analysis_page_manages_scopes_and_commentaries(client):
+    page = client.get("/analysis")
+    assert page.status_code == 200
+    assert "市场与板块分析" in page.text
+    assert 'api("/market-scopes' in page.text
+    assert 'id="market-commentary"' in page.text
+    assert 'subject_type: "market"' in page.text
+    assert "/static/commentary.js" in page.text

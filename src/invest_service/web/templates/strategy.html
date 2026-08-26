@@ -92,6 +92,7 @@
                 </table>
             </div>
         </div>
+        <div id="portfolio-commentary"></div>
     </section>
 </div>
 
@@ -290,6 +291,7 @@
 </dialog>
 {% endblock %}
 {% block scripts %}
+<script src="/static/commentary.js?v=20260826-1"></script>
 <script>
 (() => {
     const state = {
@@ -299,6 +301,9 @@
         snapshotSearchTimer: null,
     };
     const $ = (id) => document.getElementById(id);
+    const commentaryTimeline = window.CommentaryTimeline.mount({
+        container: "#portfolio-commentary", title: "组合点评",
+    });
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
     })[c]);
@@ -335,6 +340,9 @@
         renderStrategies();
         try {
             state.detail = await api("/portfolios/" + id);
+            await commentaryTimeline.setSubject({
+                subject_type: "portfolio", portfolio_id: id,
+            });
             for (const position of state.detail.positions) {
                 state.assets.set(assetIdentity(position.asset), position.asset);
             }

@@ -129,6 +129,27 @@ svg { width: 18px; height: 18px; flex: none; }
 .portfolio-profile div { min-width: 0; }
 .portfolio-profile span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 5px; }
 .portfolio-profile strong { display: block; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.commentary-panel { margin-top: 18px; }
+.commentary-header { align-items: center; }
+.commentary-list { display: grid; gap: 12px; }
+.commentary-item { border-top: 1px solid #edf0f3; padding: 16px 2px 4px; }
+.commentary-item:first-child { border-top: 0; }
+.commentary-item h3 { margin: 8px 0; font-size: 16px; }
+.commentary-meta, .commentary-flags { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.commentary-summary { color: var(--muted); margin: 0 0 10px; }
+.commentary-content { line-height: 1.7; overflow-wrap: anywhere; }
+.commentary-content h1, .commentary-content h2, .commentary-content h3 { margin: 14px 0 8px; }
+.commentary-content p, .commentary-content ul, .commentary-content ol, .commentary-content blockquote { margin: 8px 0; }
+.commentary-content blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--muted); }
+.commentary-metric { display: inline-grid; grid-template-columns: auto auto; gap: 8px; margin: 6px 12px 6px 0; padding: 8px 10px; background: var(--accent-soft); border-radius: 6px; }
+.commentary-metric dt { color: var(--muted); }
+.commentary-metric dd { margin: 0; font-weight: 700; }
+.commentary-flags { margin-top: 12px; }
+.commentary-flags span { padding: 2px 7px; border-radius: 999px; background: #f3f5f7; }
+.commentary-editor { min-height: 220px; }
+.scope-profile { margin-bottom: 18px; }
+.scope-profile h2 { display: inline; margin-left: 8px; }
+.scope-profile p { margin-bottom: 6px; }
 .empty-state { min-height: 320px; display: grid; place-items: center; text-align: center; color: var(--muted); padding: 28px; }
 .empty-state svg { width: 38px; height: 38px; margin-bottom: 10px; color: #9ca6b5; }
 

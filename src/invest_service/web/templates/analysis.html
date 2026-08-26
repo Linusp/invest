@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% set active_page = "analysis" %}
+{% block title %}市场分析 · Invest{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div><h1>市场与板块分析</h1><p>统一管理市场、行业、主题和商品，并沉淀点评</p></div>
+    <div class="actions">
+        <button id="edit-scope" class="button" type="button" disabled><i data-lucide="pencil"></i><span>编辑</span></button>
+        <button id="delete-scope" class="button danger" type="button" disabled><i data-lucide="trash-2"></i><span>删除</span></button>
+    </div>
+</section>
+
+<div class="strategy-layout">
+    <aside class="panel strategy-sidebar">
+        <div class="panel-header">
+            <h2 class="panel-title">分析对象</h2>
+            <button id="new-scope" class="icon-button" type="button" title="新增市场对象" aria-label="新增市场对象"><i data-lucide="plus"></i></button>
+        </div>
+        <div id="scope-list" class="strategy-list"></div>
+    </aside>
+    <section>
+        <div id="scope-empty" class="panel empty-state"><div><i data-lucide="network"></i><div>请先新增或选择分析对象</div></div></div>
+        <div id="scope-detail" hidden>
+            <div class="panel scope-profile">
+                <div><span id="scope-type" class="badge"></span><h2 id="scope-name"></h2></div>
+                <p id="scope-description" class="muted"></p>
+                <div id="scope-parent" class="muted"></div>
+            </div>
+            <div id="market-commentary"></div>
+        </div>
+    </section>
+</div>
+
+<dialog id="scope-dialog">
+    <form id="scope-form">
+        <div class="dialog-header"><h2 id="scope-dialog-title">新增分析对象</h2><button class="icon-button" type="button" data-close="scope-dialog" aria-label="关闭"><i data-lucide="x"></i></button></div>
+        <div class="dialog-body">
+            <label class="field"><span class="label">稳定代码</span><input id="scope-code" class="input mono" maxlength="128" placeholder="CN.ASHARE.BANK" required></label>
+            <label class="field"><span class="label">名称</span><input id="scope-form-name" class="input" maxlength="255" required></label>
+            <label class="field"><span class="label">类型</span><select id="scope-form-type" class="input"><option value="market">市场</option><option value="sector">行业</option><option value="theme">主题</option><option value="commodity">商品</option></select></label>
+            <label class="field"><span class="label">上级对象</span><select id="scope-form-parent" class="input"><option value="">无（根节点）</option></select></label>
+            <label class="field"><span class="label">说明</span><textarea id="scope-form-description" class="textarea"></textarea></label>
+        </div>
+        <div class="dialog-footer"><button class="button" type="button" data-close="scope-dialog">取消</button><button class="button primary" type="submit">保存</button></div>
+    </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script src="/static/commentary.js?v=20260826-1"></script>
+<script>
+(() => {
+    const state = {scopes: [], activeCode: null, editing: false};
+    const $ = id => document.getElementById(id);
+    const labels = {market: "市场", sector: "行业", theme: "主题", commodity: "商品"};
+    const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[character]);
+    const timeline = window.CommentaryTimeline.mount({container: "#market-commentary", title: "市场点评"});
+
+    function activeScope() { return state.scopes.find(item => item.code === state.activeCode); }
+    function renderList() {
+        $("scope-list").innerHTML = state.scopes.length ? state.scopes.map(item => `
+            <button type="button" class="strategy-item ${item.code === state.activeCode ? "active" : ""}" data-code="${escapeHtml(item.code)}">
+                <strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(labels[item.scope_type])} · ${escapeHtml(item.code)}</small>
+            </button>`).join("") : '<div class="empty-state compact">暂无分析对象</div>';
+        $("scope-list").querySelectorAll("[data-code]").forEach(button =>
+            button.addEventListener("click", () => selectScope(button.dataset.code))
+        );
+    }
+    async function loadScopes(preferredCode = null) {
+        state.scopes = await api("/market-scopes");
+        const next = preferredCode || state.activeCode || state.scopes[0]?.code;
+        state.activeCode = state.scopes.some(item => item.code === next) ? next : null;
+        renderList();
+        if (state.activeCode) await selectScope(state.activeCode); else showDetail(false);
+    }
+    async function selectScope(code) {
+        state.activeCode = code;
+        renderList();
+        const scope = activeScope();
+        $("scope-name").textContent = scope.name;
+        $("scope-type").textContent = labels[scope.scope_type] || scope.scope_type;
+        $("scope-description").textContent = scope.description || "暂无说明";
+        $("scope-parent").textContent = scope.parent_code ? `上级：${scope.parent_code}` : "根节点";
+        showDetail(true);
+        await timeline.setSubject({subject_type: "market", market_scope_code: code});
+    }
+    function showDetail(visible) {
+        $("scope-empty").hidden = visible;
+        $("scope-detail").hidden = !visible;
+        $("edit-scope").disabled = !visible;
+        $("delete-scope").disabled = !visible;
+    }
+    function openDialog(editing) {
+        state.editing = editing;
+        const scope = activeScope();
+        $("scope-dialog-title").textContent = editing ? "编辑分析对象" : "新增分析对象";
+        $("scope-code").value = editing ? scope.code : "";
+        $("scope-code").disabled = editing;
+        $("scope-form-name").value = editing ? scope.name : "";
+        $("scope-form-type").value = editing ? scope.scope_type : "market";
+        $("scope-form-description").value = editing ? scope.description || "" : "";
+        $("scope-form-parent").innerHTML = '<option value="">无（根节点）</option>' + state.scopes
+            .filter(item => !editing || item.code !== scope.code)
+            .map(item => `<option value="${escapeHtml(item.code)}">${escapeHtml(item.name)} (${escapeHtml(item.code)})</option>`).join("");
+        $("scope-form-parent").value = editing ? scope.parent_code || "" : "";
+        $("scope-dialog").showModal();
+    }
+    async function saveScope(event) {
+        event.preventDefault();
+        const payload = {
+            name: $("scope-form-name").value.trim(), scope_type: $("scope-form-type").value,
+            parent_code: $("scope-form-parent").value || null,
+            description: $("scope-form-description").value.trim() || null,
+        };
+        let saved;
+        if (state.editing) {
+            saved = await api("/market-scopes/" + encodeURIComponent(state.activeCode), {method: "PATCH", body: JSON.stringify(payload)});
+        } else {
+            payload.code = $("scope-code").value.trim();
+            saved = await api("/market-scopes", {method: "POST", body: JSON.stringify(payload)});
+        }
+        $("scope-dialog").close();
+        showToast("分析对象已保存", "success");
+        await loadScopes(saved.code);
+    }
+    async function deleteScope() {
+        const scope = activeScope();
+        if (!scope || !window.confirm(`确认删除“${scope.name}”？`)) return;
+        await api("/market-scopes/" + encodeURIComponent(scope.code), {method: "DELETE"});
+        state.activeCode = null;
+        showToast("分析对象已删除", "success");
+        await loadScopes();
+    }
+    $("new-scope").addEventListener("click", () => openDialog(false));
+    $("edit-scope").addEventListener("click", () => openDialog(true));
+    $("delete-scope").addEventListener("click", () => deleteScope().catch(error => showToast(error.message, "error")));
+    $("scope-form").addEventListener("submit", event => saveScope(event).catch(error => showToast(error.message, "error")));
+    document.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", () => $(button.dataset.close).close()));
+    loadScopes().catch(error => showToast(error.message, "error"));
+})();
+</script>
+{% endblock %}
