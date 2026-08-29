@@ -11,6 +11,7 @@ from invest_service.providers import (
     AkshareFallbackProvider,
     EastMoneyProvider,
     IndexFallbackProvider,
+    IwencaiProvider,
     PrioritizedMarketProvider,
     ProviderAsset,
     ProviderError,
@@ -215,6 +216,7 @@ def test_factory_defaults_to_free_first_with_tushare_last():
     settings = Settings(
         market_provider="tushare",
         tushare_token="token",
+        iwencai_api_key=None,
         auto_update_enabled=False,
     )
 
@@ -247,6 +249,7 @@ def test_factory_can_keep_configured_provider_first_order():
         market_provider="tushare",
         market_provider_order="configured_first",
         tushare_token="token",
+        iwencai_api_key=None,
         auto_update_enabled=False,
     )
 
@@ -254,3 +257,20 @@ def test_factory_can_keep_configured_provider_first_order():
 
     assert isinstance(provider, IndexFallbackProvider)
     assert isinstance(provider.primary, TushareProvider)
+
+
+def test_factory_places_iwencai_before_paid_tushare_history():
+    provider = make_market_provider(
+        Settings(
+            market_provider="tushare",
+            tushare_token="token",
+            iwencai_api_key="key",
+            auto_update_enabled=False,
+        )
+    )
+
+    assert isinstance(provider, PrioritizedMarketProvider)
+    assert IwencaiProvider not in [type(item) for item in provider.search_providers]
+    for category in AssetCategory:
+        history_types = [type(item) for item in provider.history_providers[category]]
+        assert history_types[-2:] == [IwencaiProvider, TushareProvider]

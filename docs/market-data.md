@@ -2,15 +2,17 @@
 
 ## 行情源 fallback
 
-`INVEST_MARKET_PROVIDER_ORDER=free_first`（默认）时先使用免费源，取不到或返回空数据后再使用 Tushare：
+`INVEST_MARKET_PROVIDER_ORDER=free_first`（默认）时先使用免费源，取不到或返回空数据后再逐步 fallback。配置问财 API Key 后，问财位于免费源之后、Tushare 之前：
 
-- 个股：AkShare 腾讯 → AkShare 新浪 → 东方财富 → Tushare
-- 指数：AkShare 腾讯 → AkShare 新浪 → Tushare
-- ETF：东方财富 → AkShare 新浪 → Tushare
+- 个股：AkShare 腾讯 → AkShare 新浪 → 东方财富 → 问财 → Tushare
+- 指数：AkShare 腾讯 → AkShare 新浪 → 问财 → Tushare
+- ETF：东方财富 → AkShare 新浪 → 问财 → Tushare
 
 `configured_first` 保留 Tushare 主源、AkShare 兜底的旧顺序。`TUSHARE_TOKEN` 未配置时免费源仍可用。`INDEX_FALLBACK_PROVIDER` 和 `ETF_FALLBACK_PROVIDER` 可设为 `none` 关闭对应兜底。
 
-成交量统一为股/基金份额，成交额统一为元；Tushare 和东方财富返回的“手/千元”会在写入前换算。首次同步默认回填十年，后续按 `AUTO_UPDATE_LOOKBACK_DAYS` 回溯，并覆盖最近三天数据。
+问财使用官方 `https://openapi.iwencai.com/v1/query2data` 和 `hithink-market-query` skill。配置可使用官方名称 `IWENCAI_API_KEY`，也可使用应用名称 `INVEST_IWENCAI_API_KEY`。问财只参与历史行情 fallback，不参与搜索索引构建；长时间范围按自然年分段查询。
+
+成交量统一为股/基金份额，成交额统一为元；Tushare 和东方财富返回的“手/千元”会在写入前换算。问财的股票和 ETF 成交量已是股/份，指数查询未返回成交量时保存为缺失值，不填充为 0。首次同步默认回填十年，后续按 `AUTO_UPDATE_LOOKBACK_DAYS` 回溯，并覆盖最近三天数据。
 
 ## 本地搜索索引
 
@@ -31,7 +33,7 @@ Celery Beat 每天在 `SEARCH_INDEX_UPDATE_HOUR`（默认北京时间 3 点）�
 - `CELERY_BROKER_URL`：Redis broker URL。
 - `AUTO_UPDATE_ENABLED`、`AUTO_UPDATE_INTERVAL_MINUTES`、`AUTO_UPDATE_LOOKBACK_DAYS`：行情更新调度。
 - `SEARCH_INDEX_UPDATE_HOUR`：搜索索引更新时间。
-- `MARKET_PROVIDER`、`MARKET_PROVIDER_ORDER`、`TUSHARE_TOKEN`、`EASTMONEY_TOKEN`：行情源选择。
+- `MARKET_PROVIDER`、`MARKET_PROVIDER_ORDER`、`TUSHARE_TOKEN`、`EASTMONEY_TOKEN`、`IWENCAI_API_KEY`：行情源选择和认证。
 - `REPORTING_CURRENCY`、`EXCHANGE_RATE_UPDATE_HOUR`：策略汇总币种和汇率任务。
 - `MCP_ALLOWED_HOSTS`、`MCP_ALLOWED_ORIGINS`：MCP 反向代理和浏览器访问控制。
 

@@ -41,3 +41,15 @@ def test_empty_environment_variable_does_not_hide_dotenv_value(tmp_path, monkeyp
     settings = Settings(_env_file=env_file)
 
     assert settings.tushare_token == "from-dotenv"
+
+
+def test_iwencai_accepts_official_and_invest_environment_names(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text("IWENCAI_API_KEY=official-key\n", encoding="utf-8")
+    monkeypatch.delenv("IWENCAI_API_KEY", raising=False)
+    monkeypatch.delenv("INVEST_IWENCAI_API_KEY", raising=False)
+
+    assert Settings(_env_file=env_file).iwencai_api_key == "official-key"
+
+    monkeypatch.setenv("INVEST_IWENCAI_API_KEY", "invest-key")
+    assert Settings(_env_file=env_file).iwencai_api_key == "invest-key"

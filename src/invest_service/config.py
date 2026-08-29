@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +12,13 @@ class Settings(BaseSettings):
     market_provider: Literal["tushare", "eastmoney"] = "tushare"
     market_provider_order: Literal["free_first", "configured_first"] = "free_first"
     tushare_token: str | None = None
+    iwencai_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "INVEST_IWENCAI_API_KEY",
+            "IWENCAI_API_KEY",
+        ),
+    )
     eastmoney_token: str = "D43BF722C8E33BDC906FB84D85E326E8"
     index_fallback_provider: Literal["akshare", "none"] = "akshare"
     etf_fallback_provider: Literal["akshare", "none"] = "akshare"
@@ -39,6 +46,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         env_ignore_empty=True,
         case_sensitive=False,
+        populate_by_name=True,
         extra="ignore",
     )
 
