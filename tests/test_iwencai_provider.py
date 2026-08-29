@@ -123,3 +123,49 @@ def test_history_rejects_a_response_for_another_asset():
 
     with pytest.raises(ProviderError, match="unexpected asset"):
         provider.history(_asset(), date(2026, 8, 1), date(2026, 8, 2))
+
+
+def test_catalog_paginates_hk_and_us_stocks_and_normalizes_symbols():
+    requests: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        requests.append(payload)
+        is_hk = "港股" in payload["query"]
+        page = int(payload["page"])
+        if is_hk:
+            rows = [{"股票代码": "0700.HK", "股票简称": "腾讯控股"}]
+            count = 1
+        elif page == 1:
+            rows = [{"股票代码": "AAPL.O", "股票简称": "苹果"}]
+            count = 2
+        else:
+            rows = [{"股票代码": "BRK.B.N", "股票简称": "伯克希尔B"}]
+            count = 2
+        return httpx.Response(
+            200,
+            json={"status_code": 0, "code_count": count, "datas": rows},
+        )
+
+    provider = IwencaiProvider(
+        "secret",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        catalog_page_size=1,
+    )
+
+    assets = provider.catalog()
+
+    assert [(item.symbol, item.currency) for item in assets] == [
+        ("00700.HK", "HKD"),
+        ("AAPL.US", "USD"),
+        ("BRK.B.US", "USD"),
+    ]
+    assert assets[0].provider_id == "0700.HK"
+    assert assets[0].aliases == ("0700.HK",)
+    assert assets[0].default_tags == ("港股",)
+    assert assets[1].default_tags == ("美股",)
+    assert [(item["page"], item["limit"]) for item in requests] == [
+        ("1", "1"),
+        ("1", "1"),
+        ("2", "1"),
+    ]

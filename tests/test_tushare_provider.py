@@ -270,7 +270,10 @@ def test_factory_places_iwencai_before_paid_tushare_history():
     )
 
     assert isinstance(provider, PrioritizedMarketProvider)
-    assert IwencaiProvider not in [type(item) for item in provider.search_providers]
+    assert [type(item) for item in provider.search_providers][-2:] == [
+        IwencaiProvider,
+        TushareProvider,
+    ]
     for category in AssetCategory:
         history_types = [type(item) for item in provider.history_providers[category]]
         assert history_types[-2:] == [IwencaiProvider, TushareProvider]

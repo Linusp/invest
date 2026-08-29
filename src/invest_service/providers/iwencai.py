@@ -1,3 +1,4 @@
+import logging
 import re
 import secrets
 from datetime import date
@@ -7,7 +8,16 @@ from typing import Any
 import httpx
 
 from ..models import AssetCategory
-from .base import MarketDataProvider, ProviderAsset, ProviderBar, ProviderError
+from .base import (
+    MarketDataProvider,
+    ProviderAsset,
+    ProviderBar,
+    ProviderError,
+    infer_currency,
+    infer_default_tags,
+)
+
+logger = logging.getLogger(__name__)
 
 _DATED_FIELD = re.compile(
     r"^(开盘价|最高价|最低价|收盘价|前收盘价|涨跌|涨跌幅|成交量|成交额)"
@@ -33,8 +43,14 @@ class IwencaiProvider(MarketDataProvider):
     SKILL_ID = "hithink-market-query"
     SKILL_VERSION = "1.0.0"
 
-    def __init__(self, api_key: str | None, client: httpx.Client | None = None):
+    def __init__(
+        self,
+        api_key: str | None,
+        client: httpx.Client | None = None,
+        catalog_page_size: int = 5000,
+    ):
         self.api_key = (api_key or "").strip()
+        self.catalog_page_size = catalog_page_size
         self.client = client or httpx.Client(
             timeout=45,
             headers={"User-Agent": "InvestService/0.1"},
@@ -49,6 +65,24 @@ class IwencaiProvider(MarketDataProvider):
     ) -> list[ProviderAsset]:
         # Asset search is served exclusively from the local scheduled index.
         return []
+
+    def catalog(self) -> list[ProviderAsset]:
+        if not self.api_key:
+            raise ProviderError(
+                "iWencai API key is not configured; set IWENCAI_API_KEY "
+                "or INVEST_IWENCAI_API_KEY"
+            )
+        assets: list[ProviderAsset] = []
+        errors: list[ProviderError] = []
+        for market in ("hk", "us"):
+            try:
+                assets.extend(self._catalog_market(market))
+            except ProviderError as exc:
+                errors.append(exc)
+                logger.warning("iWencai %s catalog failed: %s", market, exc)
+        if not assets and errors:
+            raise errors[0]
+        return assets
 
     def history(
         self,
@@ -79,42 +113,8 @@ class IwencaiProvider(MarketDataProvider):
         start_date: date,
         end_date: date,
     ) -> list[ProviderBar]:
-        trace_id = secrets.token_hex(32)
         query = self._history_query(asset, start_date, end_date)
-        try:
-            response = self.client.post(
-                self.API_URL,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                    "X-Claw-Call-Type": "normal",
-                    "X-Claw-Skill-Id": self.SKILL_ID,
-                    "X-Claw-Skill-Version": self.SKILL_VERSION,
-                    "X-Claw-Plugin-Id": "none",
-                    "X-Claw-Plugin-Version": "none",
-                    "X-Claw-Trace-Id": trace_id,
-                },
-                json={
-                    "query": query,
-                    "page": "1",
-                    "limit": "1",
-                    "is_cache": "1",
-                    "expand_index": "true",
-                },
-            )
-            response.raise_for_status()
-            payload = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise ProviderError(
-                f"iWencai history request failed for {asset.symbol}: {exc}"
-            ) from exc
-
-        if not isinstance(payload, dict):
-            raise ProviderError("iWencai history returned malformed data")
-        status_code = payload.get("status_code")
-        if status_code not in (None, 0):
-            message = payload.get("status_msg") or payload.get("error") or status_code
-            raise ProviderError(f"iWencai history failed: {message}")
+        payload = self._query_api(query, page=1, limit=1)
         rows = payload.get("datas") or []
         if not isinstance(rows, list):
             raise ProviderError("iWencai history returned malformed data")
@@ -135,6 +135,94 @@ class IwencaiProvider(MarketDataProvider):
             )
         return self._parse_bars(row, start_date, end_date)
 
+    def _query_api(self, query: str, page: int, limit: int) -> dict[str, Any]:
+        trace_id = secrets.token_hex(32)
+        try:
+            response = self.client.post(
+                self.API_URL,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                    "X-Claw-Call-Type": "normal",
+                    "X-Claw-Skill-Id": self.SKILL_ID,
+                    "X-Claw-Skill-Version": self.SKILL_VERSION,
+                    "X-Claw-Plugin-Id": "none",
+                    "X-Claw-Plugin-Version": "none",
+                    "X-Claw-Trace-Id": trace_id,
+                },
+                json={
+                    "query": query,
+                    "page": str(page),
+                    "limit": str(limit),
+                    "is_cache": "1",
+                    "expand_index": "true",
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise ProviderError(f"iWencai request failed: {exc}") from exc
+
+        if not isinstance(payload, dict):
+            raise ProviderError("iWencai returned malformed data")
+        status_code = payload.get("status_code")
+        if status_code not in (None, 0):
+            message = payload.get("status_msg") or payload.get("error") or status_code
+            raise ProviderError(f"iWencai query failed: {message}")
+        return payload
+
+    def _catalog_market(self, market: str) -> list[ProviderAsset]:
+        query = {
+            "hk": "全部港股普通股，排除ETF，返回股票代码、股票简称",
+            "us": "全部美股普通股，排除ETF，返回股票代码、股票简称",
+        }[market]
+        page = 1
+        assets: list[ProviderAsset] = []
+        while True:
+            payload = self._query_api(query, page=page, limit=self.catalog_page_size)
+            rows = payload.get("datas") or []
+            if not isinstance(rows, list):
+                raise ProviderError(f"iWencai {market} catalog returned malformed data")
+            assets.extend(
+                asset
+                for row in rows
+                if isinstance(row, dict)
+                and (asset := self._catalog_asset(row, market)) is not None
+            )
+            total = int(payload.get("code_count") or len(assets))
+            if not rows or page * self.catalog_page_size >= total:
+                return assets
+            page += 1
+
+    @staticmethod
+    def _catalog_asset(row: dict[str, Any], market: str) -> ProviderAsset | None:
+        raw_symbol = str(row.get("股票代码") or "").strip().upper()
+        name = str(row.get("股票简称") or "").strip()
+        if not raw_symbol or not name:
+            return None
+        if market == "hk":
+            raw_code = raw_symbol.removesuffix(".HK")
+            if not raw_code.isdigit():
+                return None
+            code = raw_code.zfill(5)
+            symbol = f"{code}.HK"
+        else:
+            code, separator, _ = raw_symbol.rpartition(".")
+            if not separator or not code:
+                return None
+            symbol = f"{code}.US"
+        aliases = (raw_symbol,) if raw_symbol != symbol else ()
+        return ProviderAsset(
+            symbol=symbol,
+            code=code,
+            name=name,
+            category=AssetCategory.STOCK,
+            provider_id=raw_symbol,
+            currency=infer_currency(symbol),
+            default_tags=infer_default_tags(symbol, AssetCategory.STOCK),
+            aliases=aliases,
+        )
+
     @staticmethod
     def _history_query(
         asset: ProviderAsset,
@@ -147,7 +235,7 @@ class IwencaiProvider(MarketDataProvider):
             AssetCategory.INDEX: "指数",
         }[asset.category]
         return (
-            f"{asset.symbol} {category}从{start_date:%Y年%m月%d日}到"
+            f"{asset.provider_id or asset.symbol} {category}从{start_date:%Y年%m月%d日}到"
             f"{end_date:%Y年%m月%d日}的日线行情，返回开盘价、最高价、最低价、"
             "收盘价、前收盘价、涨跌额、涨跌幅、成交量、成交额"
         )

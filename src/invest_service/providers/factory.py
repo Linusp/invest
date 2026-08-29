@@ -35,6 +35,8 @@ def make_market_provider(settings: "Settings") -> MarketDataProvider:
         search_providers: list[MarketDataProvider] = [eastmoney]
         if etf_enabled:
             search_providers.append(akshare)
+        if settings.iwencai_api_key:
+            search_providers.append(iwencai)
         search_providers.append(tushare)
         def with_iwencai(*providers: MarketDataProvider) -> tuple[MarketDataProvider, ...]:
             if settings.iwencai_api_key:
