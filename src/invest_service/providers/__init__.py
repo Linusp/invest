@@ -8,6 +8,7 @@ from .fallback import (
     MarketFallbackProvider,
     PrioritizedMarketProvider,
 )
+from .iwencai import IwencaiProvider
 from .tushare import TushareProvider
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     "AkshareIndexProvider",
     "AkshareFallbackProvider",
     "IndexFallbackProvider",
+    "IwencaiProvider",
     "MarketFallbackProvider",
     "PrioritizedMarketProvider",
     "MarketDataProvider",
