@@ -10,7 +10,7 @@
 
 `configured_first` 保留 Tushare 主源、AkShare 兜底的旧顺序。`TUSHARE_TOKEN` 未配置时免费源仍可用。`INDEX_FALLBACK_PROVIDER` 和 `ETF_FALLBACK_PROVIDER` 可设为 `none` 关闭对应兜底。
 
-问财使用官方 `https://openapi.iwencai.com/v1/query2data` 和 `hithink-market-query` skill。配置可使用官方名称 `IWENCAI_API_KEY`，也可使用应用名称 `INVEST_IWENCAI_API_KEY`。问财只参与历史行情 fallback，不参与搜索索引构建；长时间范围按自然年分段查询。
+问财使用官方 `https://openapi.iwencai.com/v1/query2data` 和 `hithink-market-query` skill。配置可使用官方名称 `IWENCAI_API_KEY`，也可使用应用名称 `INVEST_IWENCAI_API_KEY`。问财参与历史行情 fallback，并向定时搜索索引提供港股、美股普通股目录；长时间行情范围按自然年分段查询。
 
 成交量统一为股/基金份额，成交额统一为元；Tushare 和东方财富返回的“手/千元”会在写入前换算。问财的股票和 ETF 成交量已是股/份，指数查询未返回成交量时保存为缺失值，不填充为 0。首次同步默认回填十年，后续按 `AUTO_UPDATE_LOOKBACK_DAYS` 回溯，并覆盖最近三天数据。
 
@@ -18,7 +18,7 @@
 
 搜索只读取数据库中的轻量索引，不请求远端行情源，也不需要 Elasticsearch。索引包含类型、code、名称、别名/曾用名、拼音全拼和首字母，由 RapidFuzz 排序。
 
-Celery Beat 每天在 `SEARCH_INDEX_UPDATE_HOUR`（默认北京时间 3 点）发布构建任务。目录任务合并 AkShare 和 Tushare 来源；单个来源失败不会阻断其他来源。
+Celery Beat 每天在 `SEARCH_INDEX_UPDATE_HOUR`（默认北京时间 3 点）发布构建任务。目录任务合并 AkShare、问财和 Tushare 来源；问财港股代码统一补齐为五位并使用 `.HK`，美股代码统一使用 `.US`，原始代码作为别名保留。单个来源失败不会阻断其他来源。
 
 ## 定时任务
 
