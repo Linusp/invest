@@ -127,6 +127,10 @@ svg { width: 18px; height: 18px; flex: none; }
 .strategy-item strong { display: block; font-size: 13px; margin-bottom: 4px; }
 .strategy-item-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .strategy-item-title > span { display: inline-flex; gap: 2px; }
+.strategy-order-actions button { width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; display: grid; place-items: center; color: #758094; background: transparent; cursor: pointer; }
+.strategy-order-actions button:hover { color: var(--accent); background: white; }
+.strategy-order-actions button:disabled { opacity: .25; cursor: default; }
+.strategy-order-actions svg { width: 14px; height: 14px; }
 .strategy-item-title .strategy-info { flex: 0 0 auto; width: 26px; height: 26px; }
 .strategy-pin { flex: 0 0 auto; width: 26px; height: 26px; color: var(--muted); }
 .strategy-pin.active { color: var(--accent); }
