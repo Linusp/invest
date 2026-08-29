@@ -399,7 +399,8 @@ def test_can_create_empty_tag_group(client):
 def test_web_market_group_and_asset_pages(client):
     page = client.get("/market")
     assert page.status_code == 200
-    assert "自选行情" in page.text
+    assert "<h1>自选</h1>" in page.text
+    assert page.url.path == "/favorites"
     assert "标签分组" in page.text
     assert 'data-sort="favorite_since"' in page.text
     assert 'data-sort="favorite_return_percent"' in page.text
@@ -415,7 +416,7 @@ def test_web_market_group_and_asset_pages(client):
     client.get("/api/v1/assets/search", params={"q": "600000"})
     detail = client.get("/market/600000.SH")
     assert detail.status_code == 200
-    assert "行情首页" in detail.text
+    assert "返回自选" in detail.text
     assert "返回标签分组" not in detail.text
     assert "管理标的标签" in detail.text
     assert 'id="favorite-dialog"' in detail.text
@@ -455,7 +456,11 @@ def test_web_market_group_and_asset_pages(client):
 
     legacy = client.get("/market?symbol=600000.SH", follow_redirects=False)
     assert legacy.status_code in (302, 307)
-    assert legacy.headers["location"] == "/market/stock/600000.SH"
+    assert legacy.headers["location"] == "/asset/stock/600000.SH"
+
+    root = client.get("/", follow_redirects=False)
+    assert root.status_code in (302, 307)
+    assert root.headers["location"] == "/strategy"
 
     assert client.get("/static/app.css").status_code == 200
     assert client.get("/static/commentary.js").status_code == 200

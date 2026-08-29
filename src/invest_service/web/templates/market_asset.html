@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% set active_page = "market" %}
-{% block title %}行情详情 · Invest{% endblock %}
+{% set active_page = "favorites" %}
+{% block title %}标的详情 · Invest{% endblock %}
 {% block head %}<script src="/static/vendor/echarts-5.4.3.min.js"></script>{% endblock %}
 {% block content %}
 <div class="asset-detail-nav">
-    <a href="/market"><i data-lucide="arrow-left"></i><span>行情首页</span></a>
+    <a href="/favorites"><i data-lucide="arrow-left"></i><span>返回自选</span></a>
 </div>
 {% if market_provider_warning %}
 <div class="provider-warning">

@@ -18,14 +18,8 @@ def root():
     return RedirectResponse("/strategy")
 
 
-@router.get("/market", response_class=HTMLResponse)
-def market(request: Request):
-    legacy_symbol = request.query_params.get("symbol") or request.query_params.get("code")
-    if legacy_symbol:
-        category = _legacy_category(request, legacy_symbol)
-        return RedirectResponse(
-            f"/market/{category.value}/{quote(legacy_symbol.strip().upper(), safe='')}"
-        )
+@router.get("/favorites", response_class=HTMLResponse)
+def favorites(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="market.html",
@@ -35,8 +29,8 @@ def market(request: Request):
     )
 
 
-@router.get("/market/{category}/{symbol}", response_class=HTMLResponse)
-def market_asset(request: Request, category: AssetCategory, symbol: str):
+@router.get("/asset/{category}/{symbol}", response_class=HTMLResponse)
+def asset(request: Request, category: AssetCategory, symbol: str):
     return templates.TemplateResponse(
         request=request,
         name="market_asset.html",
@@ -48,11 +42,26 @@ def market_asset(request: Request, category: AssetCategory, symbol: str):
     )
 
 
+@router.get("/market", response_class=RedirectResponse)
+def legacy_market(request: Request):
+    legacy_symbol = request.query_params.get("symbol") or request.query_params.get("code")
+    if legacy_symbol:
+        category = _legacy_category(request, legacy_symbol)
+        normalized = quote(legacy_symbol.strip().upper(), safe="")
+        return RedirectResponse(f"/asset/{category.value}/{normalized}")
+    return RedirectResponse("/favorites")
+
+
+@router.get("/market/{category}/{symbol}", response_class=RedirectResponse)
+def legacy_market_asset_category(category: AssetCategory, symbol: str):
+    return RedirectResponse(f"/asset/{category.value}/{quote(symbol.strip().upper(), safe='')}")
+
+
 @router.get("/market/{symbol}", response_class=RedirectResponse)
 def legacy_market_asset(request: Request, symbol: str):
     category = _legacy_category(request, symbol)
     return RedirectResponse(
-        f"/market/{category.value}/{quote(symbol.strip().upper(), safe='')}"
+        f"/asset/{category.value}/{quote(symbol.strip().upper(), safe='')}"
     )
 
 

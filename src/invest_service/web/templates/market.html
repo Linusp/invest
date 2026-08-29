@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% set active_page = "market" %}
-{% block title %}自选行情 · Invest{% endblock %}
+{% set active_page = "favorites" %}
+{% block title %}自选 · Invest{% endblock %}
 {% block content %}
 <div class="page-heading">
     <div>
-        <h1>自选行情</h1>
+        <h1>自选</h1>
         <p>按标签浏览自选标的；置顶标签会成为默认分组。</p>
     </div>
 </div>
@@ -182,7 +182,7 @@
         $("tag-assets-body").innerHTML = rows.map(asset => `
             <tr>
                 <td>
-                    <a class="table-asset-link" href="/market/${encodeURIComponent(asset.category)}/${encodeURIComponent(asset.symbol)}">
+                    <a class="table-asset-link" href="/asset/${encodeURIComponent(asset.category)}/${encodeURIComponent(asset.symbol)}">
                         <span><strong class="asset-name">${escapeHtml(asset.name)}</strong><small class="asset-code mono">${escapeHtml(asset.symbol)}</small></span>
                         <span class="badge">${categoryLabel[asset.category] || escapeHtml(asset.category)}</span>
                     </a>

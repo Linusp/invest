@@ -58,7 +58,7 @@
                 <h2><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a></h2>
                 ${item.summary ? `<p class="commentary-summary">${escapeHtml(item.summary)}</p>` : ""}
                 <div class="commentary-content">${item.content_html}</div>
-                <div class="information-links">${item.market_scope_codes.map(code => `<span class="tag-chip">${escapeHtml(code)}</span>`).join("")}${item.assets.map(asset => `<a class="tag-chip" href="/market/${encodeURIComponent(asset.category)}/${encodeURIComponent(asset.symbol)}">${escapeHtml(asset.symbol)}</a>`).join("")}</div>
+                <div class="information-links">${item.market_scope_codes.map(code => `<span class="tag-chip">${escapeHtml(code)}</span>`).join("")}${item.assets.map(asset => `<a class="tag-chip" href="/asset/${encodeURIComponent(asset.category)}/${encodeURIComponent(asset.symbol)}">${escapeHtml(asset.symbol)}</a>`).join("")}</div>
             </article>`).join("") : '<div class="panel empty-state">暂无符合条件的资讯</div>';
     }
     function parseList(value) { return value.split(",").map(item => item.trim()).filter(Boolean); }

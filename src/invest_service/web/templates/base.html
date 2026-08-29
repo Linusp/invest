@@ -15,20 +15,9 @@
             <span class="brand-mark">I</span>
             <span>Invest</span>
         </a>
-        <form id="global-market-search" class="global-search" role="search">
-            <i data-lucide="search"></i>
-            <select id="global-market-category" aria-label="搜索标的类型">
-                <option value="">全部</option>
-                <option value="stock">个股</option>
-                <option value="etf">ETF</option>
-                <option value="index">指数</option>
-            </select>
-            <input id="global-market-query" type="search" placeholder="搜索代码、名称或拼音" autocomplete="off" aria-label="搜索行情标的">
-            <div id="global-market-results" class="global-search-results" hidden></div>
-        </form>
         <nav class="nav-tabs" aria-label="主导航">
-            <a href="/market" class="{% if active_page == 'market' %}active{% endif %}">
-                <i data-lucide="chart-candlestick"></i><span>行情</span>
+            <a href="/favorites" class="{% if active_page == 'favorites' %}active{% endif %}">
+                <i data-lucide="star"></i><span>自选</span>
             </a>
             <a href="/strategy" class="{% if active_page == 'strategy' %}active{% endif %}">
                 <i data-lucide="briefcase-business"></i><span>组合</span>
@@ -40,9 +29,14 @@
                 <i data-lucide="newspaper"></i><span>资讯</span>
             </a>
         </nav>
-        <a class="icon-button" href="/docs" title="API 文档" aria-label="API 文档">
-            <i data-lucide="file-json-2"></i>
-        </a>
+        <form id="global-market-search" class="global-search" role="search">
+            <i data-lucide="search"></i>
+            <select id="global-market-category" aria-label="搜索标的类型">
+                <option value="">全部</option><option value="stock">个股</option><option value="etf">ETF</option><option value="index">指数</option>
+            </select>
+            <input id="global-market-query" type="search" placeholder="搜索代码、名称或拼音" autocomplete="off" aria-label="搜索行情标的">
+            <div id="global-market-results" class="global-search-results" hidden></div>
+        </form>
     </header>
     <main class="page-shell">
         {% block content %}{% endblock %}
@@ -90,7 +84,7 @@
                 activeIndex = -1;
             };
             const openAsset = (asset) => {
-                if (asset) location.href = "/market/" + encodeURIComponent(asset.category)
+                if (asset) location.href = "/asset/" + encodeURIComponent(asset.category)
                     + "/" + encodeURIComponent(asset.symbol);
             };
             const renderResults = () => {

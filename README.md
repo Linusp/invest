@@ -27,8 +27,10 @@ make test
 
 ## 页面入口
 
-- `/market`：按标签浏览和管理自选标的。
-- `/market/{category}/{symbol}`：查看单个标的行情、历史数据和日期快捷范围。
+- `/favorites`：按标签浏览和管理自选标的。
+- `/asset/{category}/{symbol}`：查看单个标的行情、历史数据和日期快捷范围。
+
+旧的 `/market` 和 `/market/{category}/{symbol}` 地址仍会自动跳转到新地址。
 - `/strategy`：管理组合属性和核心指标；持仓、交易、点评、交易计划以四个可筛选、分页、表头三态排序的列表呈现。
 - `/analysis`：管理市场、行业、主题和商品层级，并查看市场点评。
 - `/information`：提交、筛选和阅读外部资讯。

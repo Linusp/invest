@@ -28,7 +28,7 @@ svg { width: 18px; height: 18px; flex: none; }
     border-bottom: 1px solid var(--line);
     background: rgba(255,255,255,.96);
     display: grid;
-    grid-template-columns: auto minmax(240px, 420px) auto auto;
+    grid-template-columns: auto auto minmax(240px, 420px);
     justify-content: space-between;
     gap: 18px;
     align-items: center;
@@ -45,7 +45,8 @@ svg { width: 18px; height: 18px; flex: none; }
 .nav-tabs a { padding: 0 15px; display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 14px; border-bottom: 2px solid transparent; }
 .nav-tabs a:hover { color: var(--ink); background: #f7f8fa; }
 .nav-tabs a.active { color: var(--accent); border-color: var(--accent); font-weight: 650; }
-.topbar > .icon-button { justify-self: end; }
+.nav-tabs { justify-self: start; }
+.global-search { justify-self: end; }
 .global-search {
     position: relative; width: 100%; min-width: 0; display: grid;
     grid-template-columns: 96px minmax(0, 1fr); border: 1px solid #cbd2dc;
@@ -371,12 +372,11 @@ dialog::backdrop { background: rgba(20,28,40,.52); }
     .topbar { gap: 10px; }
 }
 @media (max-width: 760px) {
-    .topbar { padding: 0 12px; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; }
+    .topbar { padding: 0 12px; grid-template-columns: auto auto minmax(0, 1fr); gap: 8px; }
     .brand > span:last-child { display: none; }
-    .nav-tabs { justify-self: end; }
+    .nav-tabs { justify-self: start; }
     .nav-tabs a { padding: 0 8px; }
     .nav-tabs a span { display: none; }
-    .topbar > .icon-button { display: none; }
     .global-search { grid-template-columns: 78px minmax(0, 1fr); }
     .global-search > select { padding-left: 29px; padding-right: 4px; font-size: 11px; }
     .page-shell { padding: 16px 12px; }

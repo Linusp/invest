@@ -436,7 +436,7 @@
         $("trade-plans").hidden = plans.length === 0;
         $("trade-plans-empty").hidden = plans.length !== 0;
         $("trade-plans-body").innerHTML = result.items.length ? result.items.map(plan => `
-            <tr><td><a href="/market/${encodeURIComponent(plan.asset_category)}/${encodeURIComponent(plan.asset_symbol)}"><div class="asset-name">${escapeHtml(plan.asset_name || plan.asset_symbol)}</div><div class="asset-code mono">${escapeHtml(plan.asset_symbol)}</div></a></td>
+            <tr><td><a href="/asset/${encodeURIComponent(plan.asset_category)}/${encodeURIComponent(plan.asset_symbol)}"><div class="asset-name">${escapeHtml(plan.asset_name || plan.asset_symbol)}</div><div class="asset-code mono">${escapeHtml(plan.asset_symbol)}</div></a></td>
                 <td><span class="badge">${actionLabels[plan.action]}</span></td>
                 <td>${escapeHtml(plan.conditions.map(condition => condition.label || `${condition.type}: ${condition.value}`).join(plan.logic === "and" ? "；" : " 或 "))}</td>
                 <td class="sensitive">${plan.quantity != null ? `数量 ${number(plan.quantity, 6)}` : plan.amount != null ? `金额 ${money(plan.amount, state.detail.summary.reporting_currency)}` : `仓位 ${(Number(plan.position_ratio) * 100).toFixed(2)}%`}</td>
@@ -504,7 +504,7 @@
         const result = pageList(rows, listViews.positions);
         $("positions-body").innerHTML = result.items.length ? result.items.map(position => `
             <tr>
-                <td><a href="/market/${encodeURIComponent(position.asset.category)}/${encodeURIComponent(position.asset.symbol)}">
+                <td><a href="/asset/${encodeURIComponent(position.asset.category)}/${encodeURIComponent(position.asset.symbol)}">
                     <div class="asset-name">${escapeHtml(position.asset.name)}</div>
                     <div class="asset-code mono">${escapeHtml(position.asset.symbol)}</div>
                 </a></td>
