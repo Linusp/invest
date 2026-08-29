@@ -127,7 +127,13 @@ class StrategyService:
     def list(self, limit: int = 100, offset: int = 0) -> list[Strategy]:
         return list(
             self.session.scalars(
-                select(Strategy).order_by(Strategy.created_at.desc()).offset(offset).limit(limit)
+                select(Strategy)
+                .order_by(
+                    Strategy.is_pinned.desc(),
+                    Strategy.display_order.asc(),
+                    Strategy.created_at.desc(),
+                )
+                .offset(offset).limit(limit)
             )
         )
 
@@ -161,6 +167,8 @@ class StrategyService:
             "investment_direction",
             "constraints",
             "notes",
+            "display_order",
+            "is_pinned",
         ):
             if field in data.model_fields_set:
                 value = getattr(data, field)

@@ -516,6 +516,8 @@ class StrategyUpdate(APIModel):
     investment_direction: str | None = None
     constraints: str | None = None
     notes: str | None = None
+    display_order: int | None = None
+    is_pinned: bool | None = None
 
 
 class StrategyRead(APIModel):
@@ -528,6 +530,8 @@ class StrategyRead(APIModel):
     investment_direction: str | None
     constraints: str | None
     notes: str | None
+    display_order: int
+    is_pinned: bool
     created_at: datetime
     updated_at: datetime
 

@@ -359,6 +359,8 @@ class Strategy(Base):
     investment_direction: Mapped[str | None] = mapped_column(Text)
     constraints: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    display_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     legacy_currency: Mapped[str] = mapped_column("currency", String(3), default="CNY")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(

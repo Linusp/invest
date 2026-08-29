@@ -137,6 +137,8 @@ def prepare_legacy_schema(engine: Engine) -> None:
             "investment_direction": "TEXT",
             "constraints": "TEXT",
             "notes": "TEXT",
+            "display_order": "INTEGER NOT NULL DEFAULT 0",
+            "is_pinned": "BOOLEAN NOT NULL DEFAULT FALSE",
         }
         with engine.begin() as connection:
             for name, sql_type in additions.items():

@@ -27,9 +27,7 @@
     <aside class="panel strategy-sidebar">
         <div class="panel-header">
             <h2 class="panel-title">我的组合</h2>
-            <button id="new-strategy" class="icon-button" type="button" title="创建组合" aria-label="创建组合">
-                <i data-lucide="plus"></i>
-            </button>
+            <div class="panel-header-actions"><select id="strategy-sort" class="input" aria-label="组合排序"><option value="default">默认</option><option value="name">名称</option><option value="created">创建时间</option></select><button id="new-strategy" class="icon-button" type="button" title="创建组合" aria-label="创建组合"><i data-lucide="plus"></i></button></div>
         </div>
         <div id="strategy-list" class="strategy-list"></div>
     </aside>
@@ -304,7 +302,7 @@
 (() => {
     const state = {
         strategies: [], activeId: null, detail: null, assets: new Map(),
-        editing: false, searchTimer: null, privacy: false,
+        editing: false, searchTimer: null, privacy: false, strategySort: "default",
         snapshotPositions: [], snapshotBalances: [], snapshotAsset: null,
         snapshotSearchTimer: null, plans: [],
     };
@@ -366,10 +364,16 @@
     }
 
     function renderStrategies() {
-        $("strategy-list").innerHTML = state.strategies.length ? state.strategies.map(item => `
+        const strategies = [...state.strategies].sort((left, right) => {
+            if (left.is_pinned !== right.is_pinned) return left.is_pinned ? -1 : 1;
+            if (state.strategySort === "name") return compare(left.name, right.name);
+            if (state.strategySort === "created") return compare(right.created_at, left.created_at);
+            return (left.display_order || 0) - (right.display_order || 0) || compare(right.created_at, left.created_at);
+        });
+        $("strategy-list").innerHTML = strategies.length ? strategies.map(item => `
             <div role="button" tabindex="0" class="strategy-item ${item.id === state.activeId ? "active" : ""}"
                     data-strategy-id="${item.id}">
-                <div class="strategy-item-title"><strong>${escapeHtml(item.name)}</strong><button class="icon-button strategy-info" type="button" title="查看组合详情" aria-label="查看组合详情" data-info-strategy-id="${item.id}"><i data-lucide="info"></i></button></div>
+                <div class="strategy-item-title"><strong>${escapeHtml(item.name)}</strong><span><button class="icon-button strategy-pin ${item.is_pinned ? "active" : ""}" type="button" title="${item.is_pinned ? "取消置顶" : "置顶组合"}" aria-label="${item.is_pinned ? "取消置顶" : "置顶组合"}" data-pin-strategy-id="${item.id}"><i data-lucide="pin"></i></button><button class="icon-button strategy-info" type="button" title="查看组合详情" aria-label="查看组合详情" data-info-strategy-id="${item.id}"><i data-lucide="info"></i></button></span></div>
                 <small>${escapeHtml(item.description || "暂无描述")}</small>
             </div>`).join("") :
             '<div class="empty-state" style="min-height:160px"><div>暂无组合</div></div>';
@@ -380,8 +384,19 @@
         $("strategy-list").querySelectorAll("[data-info-strategy-id]").forEach(button => {
             button.addEventListener("click", event => { event.stopPropagation(); openPortfolioInfo(button.dataset.infoStrategyId); });
         });
+        $("strategy-list").querySelectorAll("[data-pin-strategy-id]").forEach(button => {
+            button.addEventListener("click", async event => {
+                event.stopPropagation();
+                const item = state.strategies.find(row => row.id === button.dataset.pinStrategyId);
+                if (!item) return;
+                try { const saved = await api("/portfolios/" + item.id, {method: "PATCH", body: JSON.stringify({is_pinned: !item.is_pinned})}); Object.assign(item, saved); renderStrategies(); }
+                catch (error) { showToast(error.message, "error"); }
+            });
+        });
         window.lucide?.createIcons();
     }
+
+    $("strategy-sort").addEventListener("change", event => { state.strategySort = event.target.value; renderStrategies(); });
 
     async function loadStrategies(preferredId = null) {
         try {
