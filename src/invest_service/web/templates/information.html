@@ -53,13 +53,8 @@
         Object.entries(mappings).forEach(([id, key]) => { if ($(id).value.trim()) params.set(key, $(id).value.trim()); });
         const items = await api("/information?" + params);
         $("information-list").innerHTML = items.length ? items.map(item => `
-            <article class="panel information-card">
-                <div class="information-meta"><span class="badge">${escapeHtml(labels[item.information_type] || item.information_type)}</span><span>${escapeHtml(item.source_name)}</span><time>${escapeHtml(new Date(item.published_at).toLocaleString("zh-CN"))}</time><span>${"★".repeat(item.importance)}</span>${item.is_referenced ? '<span class="badge">已引用</span>' : ""}</div>
-                <h2><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a></h2>
-                ${item.summary ? `<p class="commentary-summary">${escapeHtml(item.summary)}</p>` : ""}
-                <div class="commentary-content">${item.content_html}</div>
-                <div class="information-links">${item.market_scope_codes.map(code => `<span class="tag-chip">${escapeHtml(code)}</span>`).join("")}${item.assets.map(asset => `<a class="tag-chip" href="/asset/${encodeURIComponent(asset.category)}/${encodeURIComponent(asset.symbol)}">${escapeHtml(asset.symbol)}</a>`).join("")}</div>
-            </article>`).join("") : '<div class="panel empty-state">暂无符合条件的资讯</div>';
+            <button class="information-row" type="button" data-information-id="${escapeHtml(item.id)}"><span class="badge">${escapeHtml(labels[item.information_type] || item.information_type)}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.source_name)} · ${escapeHtml(new Date(item.published_at).toLocaleString("zh-CN"))}</small></button>`).join("") : '<div class="panel empty-state">暂无符合条件的资讯</div>';
+        document.querySelectorAll("[data-information-id]").forEach(button => button.addEventListener("click", () => { location.href = `/information/${encodeURIComponent(button.dataset.informationId)}`; }));
     }
     function parseList(value) { return value.split(",").map(item => item.trim()).filter(Boolean); }
     async function submitInformation(event) {

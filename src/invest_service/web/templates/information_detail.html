@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% set active_page = "information" %}
+{% block title %}资讯详情 · Invest{% endblock %}
+{% block content %}<div class="asset-detail-nav"><a href="/information"><i data-lucide="arrow-left"></i><span>返回资讯列表</span></a></div><article id="information-detail" class="panel information-detail"><div class="empty-state">加载中…</div></article>{% endblock %}
+{% block scripts %}<script>
+(() => { const id = {{ information_id | tojson }}; const root = document.getElementById("information-detail"); const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c])); api(`/information/${encodeURIComponent(id)}`).then(item => { document.title = `${item.title} · Invest`; root.innerHTML = `<div class="information-meta"><span class="badge">${esc(item.information_type)}</span><span>${esc(item.source_name)}</span><time>${esc(new Date(item.published_at).toLocaleString("zh-CN"))}</time><span>${"★".repeat(item.importance)}</span></div><h1>${esc(item.title)}</h1><p class="information-original"><a href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">查看原文 ↗</a></p>${item.summary ? `<p class="commentary-summary">${esc(item.summary)}</p>` : ""}<div class="commentary-content">${item.content_html}</div>`; }).catch(error => { root.innerHTML = `<div class="empty-state">${esc(error.message)}</div>`; }); })();
+</script>{% endblock %}

@@ -53,11 +53,10 @@
         </div>
     </div>
 
-    <div id="market-chart" class="chart"></div>
-    <div class="panel-header">
-        <h2 class="panel-title">历史行情</h2>
-        <span class="muted table-caption">显示所选日期范围内最近 20 条</span>
-    </div>
+    <div class="kline-toolbar"><span class="muted">K 线周期</span><button class="kline-period active" data-kline-period="day">日 K</button><button class="kline-period" data-kline-period="week">周 K</button><button class="kline-period" data-kline-period="month">月 K</button></div><div id="market-chart" class="chart"></div>
+    <div class="asset-tabs" role="tablist"><button class="asset-tab active" data-asset-tab="history" role="tab">历史行情</button><button class="asset-tab" data-asset-tab="commentary" role="tab">点评</button><button class="asset-tab" data-asset-tab="information" role="tab">关联资讯</button></div>
+    <div id="asset-tab-history" class="asset-tab-panel">
+    <div class="panel-header"><h2 class="panel-title">历史行情</h2><span class="muted table-caption">按日期范围分页显示</span></div>
     <div class="table-wrap">
         <table class="data-table">
             <thead><tr>
@@ -68,8 +67,10 @@
             <tbody id="history-body"></tbody>
         </table>
     </div>
+    <div id="history-pager" class="list-pager"></div></div>
 </section>
-<div id="asset-commentary"></div>
+<div id="asset-tab-commentary" class="asset-tab-panel" hidden><div id="asset-commentary"></div></div>
+<div id="asset-tab-information" class="asset-tab-panel" hidden><section class="panel"><div class="panel-header"><h2 class="panel-title">关联资讯</h2></div><div id="asset-information-list" class="information-grid"></div></section></div>
 
 <dialog id="tag-dialog" class="dialog-wide">
     <div>
@@ -140,6 +141,10 @@
         pollAttempts: 0,
         category: {{ category | tojson }},
         tagMemberships: [],
+        historyPage: 1,
+        historyPageSize: 20,
+        information: [],
+        klinePeriod: "day",
     };
     const $ = (id) => document.getElementById(id);
     const commentaryTimeline = window.CommentaryTimeline.mount({
@@ -197,6 +202,11 @@
         if (shouldLoad && state.asset) loadHistory(false);
     }
 
+    document.querySelectorAll("[data-asset-tab]").forEach(tab => tab.addEventListener("click", () => {
+        document.querySelectorAll("[data-asset-tab]").forEach(item => item.classList.toggle("active", item === tab));
+        document.querySelectorAll(".asset-tab-panel").forEach(panel => { panel.hidden = panel.id !== `asset-tab-${tab.dataset.assetTab}`; });
+    }));
+
     function renderAsset() {
         const asset = state.asset;
         document.title = `${asset.name} (${asset.symbol}) · Invest`;
@@ -229,6 +239,7 @@
             subject_type: "asset", asset_symbol: state.asset.symbol,
             asset_category: state.asset.category,
         });
+        await loadInformation();
     }
 
     async function addFavorite() {
@@ -347,6 +358,7 @@
                 "/assets/" + encodeURIComponent(state.asset.category) + "/"
                     + encodeURIComponent(state.asset.symbol) + "/history?" + params
             );
+            state.historyPage = 1;
             renderQuote();
             renderChart();
             renderHistory();
@@ -357,6 +369,13 @@
         } finally {
             $("quote-panel").classList.remove("loading");
         }
+    }
+
+    async function loadInformation() {
+        if (!state.asset) return;
+        state.information = await api(`/information?asset_symbol=${encodeURIComponent(state.asset.symbol)}&asset_category=${encodeURIComponent(state.asset.category)}&limit=100`);
+        $("asset-information-list").innerHTML = state.information.length ? state.information.map(item => `<button class="information-row" type="button" data-information-id="${escapeHtml(item.id)}"><span class="badge">${escapeHtml(item.information_type)}</span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.source_name)} · ${escapeHtml(new Date(item.published_at).toLocaleString("zh-CN"))}</small></button>`).join("") : '<div class="empty-state">暂无关联资讯</div>';
+        document.querySelectorAll("[data-information-id]").forEach(button => button.addEventListener("click", () => { location.href = `/information/${encodeURIComponent(button.dataset.informationId)}`; }));
     }
 
     function startPolling() {
@@ -398,7 +417,8 @@
     }
 
     function renderHistory() {
-        $("history-body").innerHTML = state.history.slice(-20).reverse().map(row => `
+        const ordered = state.history.slice().reverse(); const pages = Math.max(1, Math.ceil(ordered.length / state.historyPageSize)); state.historyPage = Math.min(state.historyPage, pages); const visible = ordered.slice((state.historyPage - 1) * state.historyPageSize, state.historyPage * state.historyPageSize);
+        $("history-body").innerHTML = visible.map(row => `
             <tr>
                 <td class="mono">${row.trade_date}</td>
                 <td class="text-right">${number(row.open, 4)}</td>
@@ -409,13 +429,13 @@
                     ${Number(row.change_percent || 0) >= 0 ? "+" : ""}${number(row.change_percent)}%
                 </td>
                 <td class="text-right">${row.volume == null ? "--" : number(row.volume, 0)}</td>
-            </tr>`).join("");
+            </tr>`).join(""); $("history-pager").innerHTML = `<span>共 ${ordered.length} 条 · 第 ${state.historyPage}/${pages} 页</span><div><button class="button" data-history-page="prev" ${state.historyPage <= 1 ? "disabled" : ""}>上一页</button><button class="button" data-history-page="next" ${state.historyPage >= pages ? "disabled" : ""}>下一页</button></div>`; $("history-pager").querySelectorAll("[data-history-page]").forEach(button => button.addEventListener("click", () => { state.historyPage += button.dataset.historyPage === "next" ? 1 : -1; renderHistory(); }));
     }
 
-    function movingAverage(period) {
-        return state.history.map((_, index) => {
+    function movingAverage(period, source = state.history) {
+        return source.map((_, index) => {
             if (index < period - 1) return null;
-            const values = state.history.slice(index - period + 1, index + 1);
+            const values = source.slice(index - period + 1, index + 1);
             return values.reduce((sum, row) => sum + Number(row.close), 0) / period;
         });
     }
@@ -432,11 +452,12 @@
             element.replaceChildren();
             state.chart = echarts.init(element);
         }
-        const dates = state.history.map(row => row.trade_date);
+        const bars = aggregateHistory();
+        const dates = bars.map(row => row.trade_date);
         state.chart.setOption({
             animation: false,
             tooltip: {trigger: "axis", axisPointer: {type: "cross"}},
-            legend: {top: 12, data: ["日线", "MA5", "MA20", "成交量"]},
+            legend: {top: 12, data: [`${state.klinePeriod === "day" ? "日" : state.klinePeriod === "week" ? "周" : "月"}线`, "MA5", "MA20", "成交量"]},
             grid: [
                 {left: 58, right: 54, top: 55, height: "60%"},
                 {left: 58, right: 54, top: "75%", height: "14%"},
@@ -452,23 +473,31 @@
             dataZoom: [{type: "inside", xAxisIndex: [0, 1], start: 0, end: 100}],
             series: [
                 {
-                    name: "日线", type: "candlestick",
-                    data: state.history.map(row => [row.open, row.close, row.low, row.high]),
+                    name: `${state.klinePeriod === "day" ? "日" : state.klinePeriod === "week" ? "周" : "月"}线`, type: "candlestick",
+                    data: bars.map(row => [row.open, row.close, row.low, row.high]),
                     itemStyle: {color: "#b53a3a", color0: "#198754", borderColor: "#b53a3a", borderColor0: "#198754"},
                 },
-                {name: "MA5", type: "line", symbol: "none", data: movingAverage(5), lineStyle: {width: 1, color: "#275ea8"}},
-                {name: "MA20", type: "line", symbol: "none", data: movingAverage(20), lineStyle: {width: 1, color: "#a45b12"}},
+                {name: "MA5", type: "line", symbol: "none", data: movingAverage(5, bars), lineStyle: {width: 1, color: "#275ea8"}},
+                {name: "MA20", type: "line", symbol: "none", data: movingAverage(20, bars), lineStyle: {width: 1, color: "#a45b12"}},
                 {
                     name: "成交量", type: "bar", xAxisIndex: 1, yAxisIndex: 1,
-                    data: state.history.map(row => row.volume), itemStyle: {color: "#8c99aa"},
+                    data: bars.map(row => row.volume), itemStyle: {color: "#8c99aa"},
                 },
             ],
         }, true);
     }
 
+    function aggregateHistory() {
+        if (state.klinePeriod === "day") return state.history;
+        const groups = new Map();
+        state.history.forEach(row => { const date = new Date(row.trade_date); const key = state.klinePeriod === "week" ? (() => { const d = new Date(date); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return formatDate(d); })() : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`; const current = groups.get(key); if (!current) groups.set(key, {trade_date: key, open: row.open, high: row.high, low: row.low, close: row.close, volume: Number(row.volume || 0)}); else { current.high = Math.max(Number(current.high), Number(row.high)); current.low = Math.min(Number(current.low), Number(row.low)); current.close = row.close; current.volume += Number(row.volume || 0); } });
+        const bars = [...groups.values()]; bars.forEach((bar, index) => { const previous = bars[index - 1]?.close; bar.change_percent = previous ? (Number(bar.close) - Number(previous)) / Number(previous) * 100 : 0; }); return bars;
+    }
+
     document.querySelectorAll("[data-range]").forEach(button =>
         button.addEventListener("click", () => setRange(button.dataset.range))
     );
+    document.querySelectorAll("[data-kline-period]").forEach(button => button.addEventListener("click", () => { state.klinePeriod = button.dataset.klinePeriod; document.querySelectorAll("[data-kline-period]").forEach(item => item.classList.toggle("active", item === button)); renderChart(); }));
     [$("start-date"), $("end-date")].forEach(input => input.addEventListener("change", () => {
         document.querySelectorAll("[data-range]").forEach(button => button.classList.remove("active"));
         loadHistory(false);

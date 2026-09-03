@@ -103,3 +103,10 @@ def analysis(request: Request):
 @router.get("/information", response_class=HTMLResponse)
 def information(request: Request):
     return templates.TemplateResponse(request=request, name="information.html")
+
+
+@router.get("/information/{information_id}", response_class=HTMLResponse)
+def information_detail(request: Request, information_id: str):
+    return templates.TemplateResponse(
+        request=request, name="information_detail.html", context={"information_id": information_id}
+    )

@@ -105,19 +105,22 @@ def test_information_can_be_unassociated_and_linked_to_commentary(client):
             "content": {"version": 1, "blocks": []},
         },
     ).json()
-    linked = client.post(
-        f"/api/v1/commentaries/{commentary['id']}/information/{information['id']}"
-    )
+    linked = client.post(f"/api/v1/commentaries/{commentary['id']}/information/{information['id']}")
     assert linked.status_code == 204
-    assert client.get(
-        f"/api/v1/commentaries/{commentary['id']}/information"
-    ).json()[0]["id"] == information["id"]
-    assert client.get("/api/v1/information", params={"referenced": True}).json()[0][
-        "id"
-    ] == information["id"]
-    assert client.delete(
-        f"/api/v1/commentaries/{commentary['id']}/information/{information['id']}"
-    ).status_code == 204
+    assert (
+        client.get(f"/api/v1/commentaries/{commentary['id']}/information").json()[0]["id"]
+        == information["id"]
+    )
+    assert (
+        client.get("/api/v1/information", params={"referenced": True}).json()[0]["id"]
+        == information["id"]
+    )
+    assert (
+        client.delete(
+            f"/api/v1/commentaries/{commentary['id']}/information/{information['id']}"
+        ).status_code
+        == 204
+    )
 
     unsafe = client.post(
         "/api/v1/information",
@@ -157,12 +160,10 @@ def test_information_mcp_submission_and_queries(session_factory, provider):
         },
     )
     assert created["content"] == "采集到的摘要"
-    assert _call_tool(mcp, "get_information", {"information_id": created["id"]})[
-        "id"
-    ] == created["id"]
-    assert _call_tool(mcp, "list_information", {"query": "外部资讯"})[0][
-        "id"
-    ] == created["id"]
+    assert (
+        _call_tool(mcp, "get_information", {"information_id": created["id"]})["id"] == created["id"]
+    )
+    assert _call_tool(mcp, "list_information", {"query": "外部资讯"})[0]["id"] == created["id"]
 
 
 def test_information_page_renders_and_filters_server_records(client):
@@ -171,4 +172,9 @@ def test_information_page_renders_and_filters_server_records(client):
     assert "资讯中心" in page.text
     assert 'api("/information' in page.text
     assert "关联市场代码" in page.text
-    assert "content_html" in page.text
+    assert "content_html" not in page.text
+
+    detail = client.get("/information/example-id")
+    assert detail.status_code == 200
+    assert "content_html" in detail.text
+    assert "查看原文" in detail.text
