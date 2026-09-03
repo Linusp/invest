@@ -2,7 +2,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
@@ -11,6 +11,46 @@ from ..models import Asset, AssetCategory, AssetSearchIndex
 WEB_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=WEB_DIR / "templates")
 router = APIRouter(include_in_schema=False)
+
+
+@router.get("/llms.txt", response_class=PlainTextResponse)
+def llms_txt():
+    """Publish a concise, stable orientation for AI agents and tooling."""
+    return """# Invest Service
+
+> 本地投资数据服务，提供标的搜索、行情历史、自选分组、组合账本、点评、资讯和交易计划。
+
+Invest exposes both a REST API and an MCP server. Use the MCP server for agent tool
+calls; use the REST API or the web pages when a human-facing workflow is needed.
+
+## Machine-readable interfaces
+
+- [OpenAPI schema](/openapi.json): complete REST API schema and parameter definitions.
+- [MCP Streamable HTTP](/mcp/): MCP endpoint with the full tool set.
+- [MCP integration guide](/docs/guide): HTTP and stdio setup for coding agents.
+
+## Human-readable documentation
+
+- [REST API reference](/docs/api): business concepts, endpoint overview and MCP tool coverage.
+- [Market data guide](/docs/market-data): providers, search index and scheduled updates.
+- [Information ingestion guide](/docs/information): submitting and associating external information.
+- [Portfolio, commentary and trade-plan requirements](/docs/portfolio-commentary-trade-plan-prd.md): domain rules and workflows.
+
+## Main web pages
+
+- [/favorites](/favorites): browse and manage favorite assets.
+- [/asset/{category}/{symbol}](/asset/stock/600000.SH): view an asset's quote, K-line, history, commentaries and related information.
+- [/strategy](/strategy): manage portfolios, positions, trades, commentaries and trade plans.
+- [/analysis](/analysis): manage market, sector, theme and commodity scopes.
+- [/information](/information): browse submitted information and open full details.
+
+## Agent usage notes
+
+- Asset identity is `category + symbol`; pass both when a symbol may be ambiguous.
+- Commentary and information content can be requested from MCP as Markdown (default) or structured blocks.
+- Creating or changing a trade plan never writes a trade automatically; adding a trade is a separate operation.
+- MCP Host/Origin checks are not authentication. Production deployments should add authentication and HTTPS at the gateway.
+"""
 
 
 @router.get("/", response_class=RedirectResponse)
