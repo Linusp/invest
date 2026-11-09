@@ -5,5 +5,16 @@
 .venv
 __pycache__
 *.db
+*.db-wal
+*.db-shm
 *.pyc
 *.egg-info
+
+# 运行时数据与本地工具状态，不参与构建
+web-articles
+.claude
+.sisyphus
+.omc
+.mcp.json
+.agent-bridge-token
+uv.lock
