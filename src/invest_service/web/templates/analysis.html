@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% set active_page = "analysis" %}
 {% block title %}市场分析 · Invest{% endblock %}
+{% block head %}<script src="/static/vendor/echarts-5.4.3.min.js"></script>{% endblock %}
 {% block content %}
 <section class="page-heading">
     <div><h1>市场与板块分析</h1><p>统一管理市场、行业、主题和商品，并沉淀点评</p></div>
@@ -30,6 +31,47 @@
         </div>
     </section>
 </div>
+
+<section class="panel" id="sector-flow-panel">
+    <div class="panel-header">
+        <h2 class="panel-title">板块资金流（东方财富）</h2>
+        <div class="actions">
+            <label class="field"><span class="label">交易日</span><input id="sf-date" class="input" type="date"></label>
+            <label class="field"><span class="label">排序</span><select id="sf-order" class="input">
+                <option value="main_net">主力净流入</option>
+                <option value="super_large_net">超大单净流入</option>
+                <option value="large_net">大单净流入</option>
+                <option value="mid_net">中单净流入</option>
+                <option value="small_net">小单净流入</option>
+                <option value="change_percent">涨跌幅</option>
+                <option value="market_cap">总市值</option>
+            </select></label>
+            <label class="field"><span class="label">方向</span><select id="sf-direction" class="input">
+                <option value="desc">降序</option>
+                <option value="asc">升序</option>
+            </select></label>
+            <label class="field"><span class="label">条数</span><select id="sf-limit" class="input">
+                <option value="20">20</option><option value="50" selected>50</option><option value="100">100</option>
+            </select></label>
+            <label class="field field-inline"><input id="sf-tracked" type="checkbox"><span class="label">仅追踪板块</span></label>
+            <button id="sf-refresh" class="button" type="button"><i data-lucide="refresh-cw"></i><span>刷新</span></button>
+        </div>
+    </div>
+    <div id="sector-flow-chart" class="chart sf-chart"></div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr>
+                <th>板块</th><th>代码</th>
+                <th class="text-right">涨跌幅</th>
+                <th class="text-right">主力净流入</th>
+                <th class="text-right">超大单</th><th class="text-right">大单</th>
+                <th class="text-right">中单</th><th class="text-right">小单</th>
+            </tr></thead>
+            <tbody id="sector-flow-body"></tbody>
+        </table>
+    </div>
+    <div id="sector-flow-caption" class="muted table-caption"></div>
+</section>
 
 <dialog id="scope-dialog">
     <form id="scope-form">
@@ -136,6 +178,110 @@
     $("scope-form").addEventListener("submit", event => saveScope(event).catch(error => showToast(error.message, "error")));
     document.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", () => $(button.dataset.close).close()));
     loadScopes().catch(error => showToast(error.message, "error"));
+})();
+</script>
+<script>
+(() => {
+    const $ = id => document.getElementById(id);
+    const panel = $("sector-flow-panel");
+    if (!panel) return;
+    const state = {rows: [], chart: null, tradeDate: null};
+    const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"})[character]);
+    const fmtYi = value => {
+        if (value === null || value === undefined) return "—";
+        const yi = Number(value) / 1e8;
+        return (yi > 0 ? "+" : "") + yi.toFixed(2) + " 亿";
+    };
+    const fmtPct = value => {
+        if (value === null || value === undefined) return "—";
+        const number = Number(value);
+        return (number > 0 ? "+" : "") + number.toFixed(2) + "%";
+    };
+    const toneClass = value => Number(value || 0) >= 0 ? "sf-pos" : "sf-neg";
+
+    function renderTable() {
+        const body = $("sector-flow-body");
+        if (!state.rows.length) {
+            body.innerHTML = '<tr><td colspan="8" class="muted">暂无数据</td></tr>';
+            return;
+        }
+        body.innerHTML = state.rows.map(row => `<tr>
+            <td>${escapeHtml(row.sector_name)}</td>
+            <td class="mono">${escapeHtml(row.sector_code)}</td>
+            <td class="text-right ${toneClass(row.change_percent)}">${fmtPct(row.change_percent)}</td>
+            <td class="text-right ${toneClass(row.main_net)}">${fmtYi(row.main_net)}</td>
+            <td class="text-right ${toneClass(row.super_large_net)}">${fmtYi(row.super_large_net)}</td>
+            <td class="text-right ${toneClass(row.large_net)}">${fmtYi(row.large_net)}</td>
+            <td class="text-right ${toneClass(row.mid_net)}">${fmtYi(row.mid_net)}</td>
+            <td class="text-right ${toneClass(row.small_net)}">${fmtYi(row.small_net)}</td>
+        </tr>`).join("");
+    }
+
+    function renderChart() {
+        const element = $("sector-flow-chart");
+        if (!window.echarts) return;
+        const rows = state.rows.slice(0, 20).slice().reverse();
+        if (!rows.length) {
+            if (state.chart) { state.chart.dispose(); state.chart = null; }
+            element.innerHTML = '<div class="empty-state compact">暂无板块资金流数据</div>';
+            return;
+        }
+        if (!state.chart) state.chart = echarts.init(element);
+        state.chart.setOption({
+            animation: false,
+            title: {text: "主力净流入 Top 20（亿元）", left: 12, top: 8, textStyle: {fontSize: 12}},
+            tooltip: {
+                trigger: "axis",
+                axisPointer: {type: "shadow"},
+                formatter: params => {
+                    const item = params[0];
+                    return `${item.name}<br/>主力净流入：${item.value >= 0 ? "+" : ""}${item.value.toFixed(2)} 亿`;
+                },
+            },
+            grid: {left: 90, right: 40, top: 42, bottom: 24},
+            xAxis: {type: "value", axisLabel: {formatter: value => value + " 亿"}},
+            yAxis: {type: "category", data: rows.map(row => row.sector_name), axisLabel: {fontSize: 11}},
+            series: [{
+                type: "bar",
+                data: rows.map(row => ({
+                    value: Number(row.main_net || 0) / 1e8,
+                    itemStyle: {color: Number(row.main_net || 0) >= 0 ? "#b53a3a" : "#198754"},
+                })),
+                barMaxWidth: 16,
+            }],
+        });
+        state.chart.resize();
+    }
+
+    async function loadSectorFlow() {
+        const params = new URLSearchParams({
+            order_by: $("sf-order").value,
+            direction: $("sf-direction").value,
+            limit: $("sf-limit").value,
+        });
+        if ($("sf-date").value) params.set("trade_date", $("sf-date").value);
+        if ($("sf-tracked").checked) params.set("tracked_only", "true");
+        const data = await api("/sector-capital-flows?" + params);
+        state.rows = data.rows || [];
+        state.tradeDate = data.trade_date || null;
+        if (data.trade_date) $("sf-date").value = data.trade_date;
+        renderTable();
+        renderChart();
+        $("sector-flow-caption").textContent = state.rows.length
+            ? `交易日 ${data.trade_date} · 共 ${data.count} 个板块 · 单位：人民币`
+            : "暂无板块资金流数据；需启用 INVEST_SECTOR_FLOW_ENABLED 并运行刷新任务。";
+    }
+
+    $("sf-refresh").addEventListener("click", () =>
+        loadSectorFlow().catch(error => showToast(error.message, "error"))
+    );
+    ["sf-order", "sf-direction", "sf-limit", "sf-tracked", "sf-date"].forEach(id =>
+        $(id).addEventListener("change", () =>
+            loadSectorFlow().catch(error => showToast(error.message, "error"))
+        )
+    );
+    window.addEventListener("resize", () => state.chart?.resize());
+    loadSectorFlow().catch(error => showToast(error.message, "error"));
 })();
 </script>
 {% endblock %}

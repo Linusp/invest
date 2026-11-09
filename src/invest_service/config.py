@@ -39,6 +39,18 @@ class Settings(BaseSettings):
         "app:*",
     ]
     mcp_allowed_origins: list[str] = []
+    # EastMoney sector (板块) capital-flow collection.
+    sector_flow_enabled: bool = False
+    sector_flow_lookback_days: int = Field(default=30, ge=1, le=90)
+    # Refresh cadence while trading (minutes); 0 disables intraday refresh.
+    sector_flow_update_minutes: int = Field(default=0, ge=0)
+    # Daily (EOD) backfill time on trading days.
+    sector_flow_update_hour: int = Field(default=15, ge=0, le=23)
+    sector_flow_update_minute: int = Field(default=40, ge=0, le=59)
+    # MarketScope (SECTOR) auto-sync for the top-N tracked boards only.
+    sector_flow_sync_scopes_enabled: bool = True
+    sector_flow_sync_scopes_top: int = Field(default=30, ge=1, le=200)
+    sector_flow_sync_scopes_parent: str | None = "em_industry"
 
     model_config = SettingsConfigDict(
         env_prefix="INVEST_",

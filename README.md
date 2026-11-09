@@ -33,6 +33,7 @@ make test
 旧的 `/market` 和 `/market/{category}/{symbol}` 地址仍会自动跳转到新地址。
 - `/strategy`：管理组合属性和核心指标；持仓、交易、点评、交易计划以四个可筛选、分页、表头三态排序的列表呈现。
 - `/analysis`：管理市场、行业、主题和商品层级，并查看市场点评。
+- `/analysis` 底部：查看东方财富板块资金流排行与主力净流入图（需启用 `SECTOR_FLOW_ENABLED`）。
 - `/information`：提交、筛选和阅读外部资讯。
 
 ## 文档

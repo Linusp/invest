@@ -37,4 +37,26 @@ Celery Beat 每天在 `SEARCH_INDEX_UPDATE_HOUR`（默认北京时间 3 点）�
 - `REPORTING_CURRENCY`、`EXCHANGE_RATE_UPDATE_HOUR`：策略汇总币种和汇率任务。
 - `MCP_ALLOWED_HOSTS`、`MCP_ALLOWED_ORIGINS`：MCP 反向代理和浏览器访问控制。
 
+## 板块资金流（东方财富）
+
+`SECTOR_FLOW_ENABLED=true` 时启用。Worker 通过东方财富 push2 接口采集行业板块（BK 板块池，
+`m:90+t:2`）的日频资金流（主力/超大单/大单/中单/小单净流入），写入 `sector_capital_flows` 表。
+解析逻辑移植自 MIT 许可的 [CapitalPulse](https://github.com/Dr-Liu23/CapitalPulse)。
+
+- 数据范围：行业板块层，不含个股资金流。
+- 采集规模：一次全量刷新覆盖全部 BK 板块（约 500 个），逐个请求，耗时约数分钟。
+- 调度：`SECTOR_FLOW_UPDATE_HOUR/MINUTE`（默认 15:40）执行收盘后回填；
+  `SECTOR_FLOW_UPDATE_MINUTES>0` 时额外按该间隔在盘中刷新当日快照。
+- 查询：REST `GET /api/v1/sector-capital-flows`（板块排行）与
+  `GET /api/v1/sector-capital-flows/{sector_code}/history`；MCP 工具
+  `list_sector_capital_flows`、`get_sector_capital_flow`；`/analysis` 页可查看排行表与主力净流入图。
+
+`SECTOR_FLOW_SYNC_SCOPES_ENABLED=true` 时，按总市值取前 N 个板块（`SECTOR_FLOW_SYNC_SCOPES_TOP`，
+默认 30）写入 `market_scopes`，挂到 `SECTOR_FLOW_SYNC_SCOPES_PARENT`（默认 `em_industry`）之下，
+使点评可以按板块对象沉淀。该同步**只新建缺失对象，不删除也不覆盖**已有 scope。
+
+东方财富的行业口径是细粒度 BK 板块池（如「银行」「银行Ⅱ」「国有大型银行Ⅲ」并存），
+并非官方标准行业分类，引用时注意区分。
+
+
 配置统一使用 `INVEST_` 前缀，修改 `.env` 后需重启 API、Worker 和 Beat。

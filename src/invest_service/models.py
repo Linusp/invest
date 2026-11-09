@@ -330,6 +330,45 @@ class MarketBar(Base):
     asset: Mapped[Asset] = relationship(back_populates="history")
 
 
+class SectorCapitalFlow(Base):
+    """Daily EastMoney board (板块) capital-flow net rows.
+
+    Stores the full EastMoney BK industry pool. Only a tracked subset is
+    promoted into ``market_scopes`` (see services.sector_capital_flow). Values
+    are net inflows in CNY (主力/超大/大/中/小单). interval is reserved for a
+    future intraday (``1m``) dataset.
+    """
+
+    __tablename__ = "sector_capital_flows"
+    __table_args__ = (
+        UniqueConstraint(
+            "sector_code",
+            "trade_date",
+            "interval",
+            name="uq_sector_flow_code_date_interval",
+        ),
+        Index("ix_sector_flow_date", "trade_date", "interval"),
+        Index("ix_sector_flow_code_date", "sector_code", "trade_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sector_code: Mapped[str] = mapped_column(String(32), index=True)
+    sector_name: Mapped[str] = mapped_column(String(128))
+    trade_date: Mapped[date] = mapped_column(Date)
+    interval: Mapped[str] = mapped_column(String(8), default="1d")
+    main_net: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    super_large_net: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    large_net: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    mid_net: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    small_net: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    change_percent: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    market_cap: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    source: Mapped[str] = mapped_column(String(32), default="eastmoney")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class ExchangeRate(Base):
     __tablename__ = "exchange_rates"
     __table_args__ = (

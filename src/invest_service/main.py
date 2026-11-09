@@ -17,6 +17,7 @@ from .api import (
     information_router,
     market_scopes_router,
     portfolios_router,
+    sector_capital_flows_router,
     strategies_router,
     tags_router,
     trade_plans_router,
@@ -179,6 +180,7 @@ def create_app(
     app.include_router(information_router, prefix="/api/v1")
     app.include_router(market_scopes_router, prefix="/api/v1")
     app.include_router(portfolios_router, prefix="/api/v1")
+    app.include_router(sector_capital_flows_router, prefix="/api/v1")
     app.include_router(strategies_router, prefix="/api/v1")
     app.include_router(tags_router, prefix="/api/v1")
     app.include_router(trade_plans_router, prefix="/api/v1")

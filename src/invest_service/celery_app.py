@@ -16,8 +16,10 @@ from .providers import (
     ProviderError,
     make_market_provider,
 )
+from .providers.sector_flow import EastMoneySectorFlow
 from .schema_compat import migrate_legacy_data, prepare_legacy_schema
 from .services import ExchangeRateService, MarketService
+from .services.sector_capital_flow import SectorCapitalFlowService
 from .services.trade_plan_evaluator import evaluate_plan
 
 logger = logging.getLogger(__name__)
@@ -30,13 +32,15 @@ EXCHANGE_RATE_SOFT_TIME_LIMIT = 2 * 60
 EXCHANGE_RATE_TIME_LIMIT = 3 * 60
 SEARCH_INDEX_SOFT_TIME_LIMIT = 25 * 60
 SEARCH_INDEX_TIME_LIMIT = 30 * 60
+SECTOR_FLOW_SOFT_TIME_LIMIT = 15 * 60
+SECTOR_FLOW_TIME_LIMIT = 20 * 60
 
 
 def build_beat_schedule(settings: Settings) -> dict[str, dict[str, Any]]:
     if not settings.auto_update_enabled:
         return {}
     interval_seconds = settings.auto_update_interval_minutes * 60
-    return {
+    schedule: dict[str, dict[str, Any]] = {
         "update-market-data": {
             "task": "invest.update_market_data",
             "schedule": interval_seconds,
@@ -64,6 +68,25 @@ def build_beat_schedule(settings: Settings) -> dict[str, dict[str, Any]]:
             "options": {"expires": interval_seconds},
         },
     }
+    if settings.sector_flow_enabled:
+        # EOD backfill for the daily sector capital-flow snapshot.
+        schedule["update-sector-capital-flow"] = {
+            "task": "invest.update_sector_capital_flow",
+            "schedule": crontab(
+                hour=settings.sector_flow_update_hour,
+                minute=settings.sector_flow_update_minute,
+            ),
+            "options": {"expires": 6 * 60 * 60},
+        }
+        # Optional intraday refresh of the current trading day's snapshot.
+        if settings.sector_flow_update_minutes > 0:
+            refresh_seconds = settings.sector_flow_update_minutes * 60
+            schedule["update-sector-capital-flow-intraday"] = {
+                "task": "invest.update_sector_capital_flow",
+                "schedule": refresh_seconds,
+                "options": {"expires": refresh_seconds},
+            }
+    return schedule
 
 
 settings = get_settings()
@@ -291,6 +314,41 @@ def update_search_index() -> dict[str, int]:
 @celery_app.task(name="invest.evaluate_trade_plans")
 def evaluate_trade_plans() -> dict[str, int]:
     return run_trade_plan_evaluation(SessionLocal)
+
+
+def run_sector_capital_flow_update(
+    session_factory: sessionmaker,
+    settings: Settings,
+) -> dict[str, Any]:
+    with session_factory() as session:
+        result = SectorCapitalFlowService(session).refresh_daily(
+            lookback_days=settings.sector_flow_lookback_days,
+            provider=EastMoneySectorFlow(),
+            sync_scopes=settings.sector_flow_sync_scopes_enabled,
+            scopes_top=settings.sector_flow_sync_scopes_top,
+            scopes_parent=settings.sector_flow_sync_scopes_parent,
+        )
+    logger.info(
+        "[sector-flow] refresh finished: %s",
+        result,
+    )
+    return result
+
+
+@celery_app.task(
+    name="invest.update_sector_capital_flow",
+    autoretry_for=(ProviderError,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=2,
+    soft_time_limit=SECTOR_FLOW_SOFT_TIME_LIMIT,
+    time_limit=SECTOR_FLOW_TIME_LIMIT,
+)
+def update_sector_capital_flow() -> dict[str, Any]:
+    current_settings = get_settings()
+    if not current_settings.sector_flow_enabled:
+        return {"disabled": True}
+    return run_sector_capital_flow_update(SessionLocal, current_settings)
 
 
 def run_worker() -> None:

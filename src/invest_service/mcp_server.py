@@ -52,6 +52,8 @@ from .services import (
     InformationService,
     MarketScopeService,
     MarketService,
+    SectorCapitalFlowService,
+    SectorFlowNotFound,
     StrategyService,
     TradePlanService,
 )
@@ -102,6 +104,52 @@ def build_mcp(
 
     def trade_plans(session):
         return TradePlanService(session)
+
+    @mcp.tool()
+    def list_sector_capital_flows(
+        trade_date: str | None = None,
+        order_by: str = "main_net",
+        direction: str = "desc",
+        limit: int = 50,
+        tracked_only: bool = False,
+    ) -> dict:
+        """Rank EastMoney industry boards (板块) by daily capital net flow.
+
+        Net-flow values are in CNY. order_by accepts main_net, super_large_net,
+        large_net, mid_net, small_net, change_percent or market_cap. Pass
+        tracked_only=True to restrict to boards promoted into market scopes.
+        """
+        parsed_date = date.fromisoformat(trade_date) if trade_date else None
+        with session_factory() as session:
+            service = SectorCapitalFlowService(session)
+            scope_codes = service.sector_codes_for_scope() if tracked_only else None
+            rows = service.list_flows(
+                trade_date=parsed_date,
+                order_by=order_by,
+                direction=direction,
+                limit=limit,
+                scope_codes=scope_codes,
+            )
+            return {
+                "trade_date": str(parsed_date or service.latest_trade_date()),
+                "count": len(rows),
+                "rows": [_json_sector_flow(row) for row in rows],
+            }
+
+    @mcp.tool()
+    def get_sector_capital_flow(sector_code: str, days: int = 30) -> dict:
+        """Daily capital net-flow history for one EastMoney board (BK code)."""
+        with session_factory() as session:
+            service = SectorCapitalFlowService(session)
+            try:
+                rows = service.flow_history(sector_code, days=days)
+            except SectorFlowNotFound as exc:
+                return {"error": str(exc), "sector_code": sector_code}
+            return {
+                "sector_code": sector_code.strip().upper(),
+                "count": len(rows),
+                "rows": [_json_sector_flow(row) for row in rows],
+            }
 
     @mcp.tool()
     def search_assets(query: str, category: str | None = None, limit: int = 15) -> list[dict]:
@@ -1077,6 +1125,14 @@ def _information_for_mcp(information, output_format: str) -> dict:
     if output_format == "markdown":
         payload["content"] = markdown
     return payload
+
+
+def _json_sector_flow(row: dict) -> dict:
+    """Make a sector-flow row JSON-serializable (Decimal -> float)."""
+    return {
+        key: (float(value) if isinstance(value, Decimal) else value)
+        for key, value in row.items()
+    }
 
 
 settings = get_settings()
