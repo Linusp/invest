@@ -1,39 +1,43 @@
-# 忽略密钥文件 (本地私密存放)
+# 本地密钥与凭据
+.env
+.agent-bridge-token
 .vault_pass
 *.key
 *.pem
 
-# 忽略临时解密文件
-*.tmp
-.tmp/
-tmp/
-decrypted_*/
+# 本机运行状态（不入库）
+.invest.db
+invest.db
+*.db-wal
+*.db-shm
+web-articles/
+.mcp.json
 
-# Python / Ansible
-*.pyc
+# Python
 __pycache__/
-.ansible_cache/
-
-# 忽略 K8s 动态生成内容
-.kube/
-kubeconfig.bak
-
-# pyenv
-.python-version
-
-# dotenv
-.env
-
-# virtualenv
-env/
-venv/
-ENV/
-.env/
-/invest/.venv/
-/invest/*.db
-/invest.db
+*.py[cod]
 *.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+cobertura.xml
+testresult.xml
+htmlcov/
+build/
+dist/
+*.tmp
 
-# Userscripts
-userscripts/dist/
-userscripts/node_modules/
+# Agent 工具本地状态
+.claude/
+.sisyphus/
+.omc/
+
+# OS / 编辑器
+.DS_Store
+*.swp
+*.swo
