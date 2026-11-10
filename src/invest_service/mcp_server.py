@@ -1148,7 +1148,7 @@ def _json_sector_flow(row: dict) -> dict:
 
 
 settings = get_settings()
-default_provider = make_market_provider(settings)
+default_provider = make_market_provider(settings, SessionLocal)
 mcp = build_mcp(
     SessionLocal,
     default_provider,

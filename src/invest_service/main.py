@@ -23,8 +23,8 @@ from .api import (
     tags_router,
     trade_plans_router,
 )
-from .config import Settings, get_settings
-from .database import Base, make_engine, make_session_factory
+from .config import Settings
+from .database import Base, SessionLocal, get_settings, make_engine, make_session_factory
 from .mcp_server import build_mcp
 from .models import AssetCategory
 from .providers import (
@@ -59,7 +59,7 @@ def create_app(
 ) -> FastAPI:
     settings = settings or get_settings()
     provider_was_injected = provider is not None
-    provider = provider or make_market_provider(settings)
+    provider = provider or make_market_provider(settings, SessionLocal)
     exchange_rate_provider = exchange_rate_provider or EcbExchangeRateProvider()
     app_engine = make_engine(settings.database_url)
     session_factory = make_session_factory(app_engine)

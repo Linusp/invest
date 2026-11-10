@@ -1,9 +1,9 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 from ..models import AssetCategory
 from .akshare import AkshareFallbackProvider
 from .akshare_fund import AkshareFundProvider
-from .base import MarketDataProvider
+from .base import MarketDataProvider, ProviderError
 from .eastmoney import EastMoneyProvider
 from .fallback import MarketFallbackProvider, PrioritizedMarketProvider
 from .iwencai import IwencaiProvider
@@ -14,7 +14,84 @@ if TYPE_CHECKING:
     from ..config import Settings
 
 
-def make_market_provider(settings: "Settings") -> MarketDataProvider:
+def _build_iwencai_hooks(
+    settings: "Settings", session_factory: Any
+) -> dict[str, Callable]:
+    """问财在行情链里的额度记账与熔断。
+
+    provider 层不直接碰数据库：这里把 SessionLocal 相关逻辑包成回调注入。
+    """
+    if session_factory is None:
+        return {}
+
+    def before_call() -> None:
+        from ..services.provider_gate import ProviderGateService, ProviderUnavailable
+        from ..services.provider_usage import ProviderUsageService
+
+        with session_factory() as session:
+            try:
+                ProviderGateService(session).ensure_available("iwencai")
+            except ProviderUnavailable as exc:
+                # provider 层只认 ProviderError，保证 fallback 链能继续降级。
+                raise ProviderError(str(exc)) from exc
+            used = ProviderUsageService(session).count("iwencai")
+            limit = settings.iwencai_daily_limit
+            if limit > 0 and used >= limit:
+                raise ProviderError(f"问财今日调用已达上限（{used}/{limit}）")
+
+    def record_call() -> None:
+        from ..services.provider_usage import ProviderUsageService
+
+        with session_factory() as session:
+            ProviderUsageService(session).record("iwencai")
+
+    def on_quota_error(message: str) -> None:
+        from ..services.provider_gate import ProviderGateService
+
+        with session_factory() as session:
+            ProviderGateService(session).hit_daily_limit("iwencai", message[:200])
+
+    def catalog_needed() -> bool:
+        from sqlalchemy import func, or_, select
+
+        from ..models import Asset
+
+        with session_factory() as session:
+            return bool(
+                session.scalar(
+                    select(func.count())
+                    .select_from(Asset)
+                    .where(
+                        or_(
+                            Asset.symbol.like("%.HK"),
+                            Asset.symbol.like("%.US"),
+                        )
+                    )
+                )
+            )
+
+    def available() -> bool:
+        from ..services.provider_gate import ProviderGateService
+
+        with session_factory() as session:
+            try:
+                ProviderGateService(session).ensure_available("iwencai")
+            except Exception:
+                return False
+            return True
+
+    return {
+        "available": available,
+        "before_call": before_call,
+        "record_call": record_call,
+        "on_quota_error": on_quota_error,
+        "catalog_needed": catalog_needed,
+    }
+
+
+def make_market_provider(
+    settings: "Settings", session_factory: Any = None
+) -> MarketDataProvider:
     eastmoney = EastMoneyProvider(settings.eastmoney_token)
     index_enabled = settings.index_fallback_provider == "akshare"
     etf_enabled = settings.etf_fallback_provider == "akshare"
@@ -31,7 +108,9 @@ def make_market_provider(settings: "Settings") -> MarketDataProvider:
         return primary
 
     tushare = TushareProvider(settings.tushare_token)
-    iwencai = IwencaiProvider(settings.iwencai_api_key)
+    iwencai = IwencaiProvider(
+        settings.iwencai_api_key, **_build_iwencai_hooks(settings, session_factory)
+    )
     akshare = AkshareFallbackProvider(etf_history_provider=eastmoney)
     fund = AkshareFundProvider()
     wind_key = settings.wind_key()

@@ -3,7 +3,7 @@ import re
 import secrets
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -48,8 +48,18 @@ class IwencaiProvider(MarketDataProvider):
         api_key: str | None,
         client: httpx.Client | None = None,
         catalog_page_size: int = 5000,
+        before_call: Callable[[], None] | None = None,
+        record_call: Callable[[], None] | None = None,
+        on_quota_error: Callable[[str], None] | None = None,
+        catalog_needed: Callable[[], bool] | None = None,
+        available: Callable[[], bool] | None = None,
     ):
         self.api_key = (api_key or "").strip()
+        self.before_call = before_call
+        self.record_call = record_call
+        self.on_quota_error = on_quota_error
+        self.catalog_needed = catalog_needed
+        self.available = available
         self.catalog_page_size = catalog_page_size
         self.client = client or httpx.Client(
             timeout=45,
@@ -76,6 +86,10 @@ class IwencaiProvider(MarketDataProvider):
         return []
 
     def catalog(self) -> list[ProviderAsset]:
+        if self.available is not None and not self.available():
+            return []
+        if self.catalog_needed is not None and not self.catalog_needed():
+            return []
         if not self.api_key:
             raise ProviderError(
                 "iWencai API key is not configured; set IWENCAI_API_KEY "
@@ -145,6 +159,10 @@ class IwencaiProvider(MarketDataProvider):
         return self._parse_bars(row, start_date, end_date)
 
     def _query_api(self, query: str, page: int, limit: int) -> dict[str, Any]:
+        if self.before_call is not None:
+            self.before_call()
+        if self.record_call is not None:
+            self.record_call()
         trace_id = secrets.token_hex(32)
         try:
             response = self.client.post(
@@ -170,6 +188,8 @@ class IwencaiProvider(MarketDataProvider):
             if response.status_code in {401, 429}:
                 detail = response.text[:200]
                 if "次数已用完" in detail or "额度" in detail:
+                    if self.on_quota_error is not None:
+                        self.on_quota_error(detail)
                     raise ProviderError(f"问财当日额度已用完: {detail}")
                 raise ProviderError(f"iWencai 鉴权/限流失败({response.status_code}): {detail}")
             response.raise_for_status()

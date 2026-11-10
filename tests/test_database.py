@@ -76,7 +76,7 @@ def test_missing_tushare_token_keeps_local_search_available(tmp_path, monkeypatc
 
     monkeypatch.setattr(
         "invest_service.main.make_market_provider",
-        lambda _: FreeProvider(),
+        lambda _settings, *_args, **_kwargs: FreeProvider(),
     )
     app = create_app(
         Settings(

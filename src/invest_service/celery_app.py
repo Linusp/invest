@@ -278,7 +278,7 @@ def update_market_data() -> dict[str, Any]:
     current_settings = get_settings()
     return run_market_update(
         SessionLocal,
-        make_market_provider(current_settings),
+        make_market_provider(current_settings, SessionLocal),
         current_settings.auto_update_lookback_days,
     )
 
@@ -299,7 +299,7 @@ def update_asset_market_data(
     current_settings = get_settings()
     return run_asset_update(
         SessionLocal,
-        make_market_provider(current_settings),
+        make_market_provider(current_settings, SessionLocal),
         symbol,
         current_settings.auto_update_lookback_days,
         AssetCategory(category) if category else None,
@@ -337,7 +337,7 @@ def update_search_index() -> dict[str, int]:
     current_settings = get_settings()
     return run_search_index_update(
         SessionLocal,
-        make_market_provider(current_settings),
+        make_market_provider(current_settings, SessionLocal),
     )
 
 
