@@ -84,7 +84,9 @@ window.__ModuleLoader__.load({
 .iv-seg{display:inline-flex;gap:2px;background:var(--dsw-surface-secondary,#f3f4f6);border-radius:6px;padding:2px}
 .iv-seg-btn{border:0;background:transparent;border-radius:4px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--dsw-text-secondary,#5c6370)}
 .iv-seg-btn.on{background:#fff;color:var(--dsw-text-primary,#1f2329);box-shadow:0 1px 2px rgba(20,30,45,.12)}
-.iv-race-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.iv-race-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:1100px){.iv-race-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:720px){.iv-race-grid{grid-template-columns:1fr}}
 .iv-mini{border:1px solid var(--dsw-border-subtle,#eceef2);border-radius:8px;padding:8px 10px}
 .iv-mini-head{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;margin-bottom:2px}
 .iv-mini-head strong{font-weight:600}
@@ -1174,7 +1176,7 @@ window.__ModuleLoader__.load({
       const zeroY = pad.top + plotH / 2;
       const count = times.length;
       let maxAbs = 0;
-      for (const [, name] of RACE_FIELDS) {
+      for (const [name] of RACE_FIELDS) {
         for (const value of sector.values[name] || []) {
           if (value !== null && value !== undefined) maxAbs = Math.max(maxAbs, Math.abs(value));
         }
