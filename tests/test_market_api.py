@@ -622,3 +622,13 @@ def test_same_symbol_in_different_categories_stays_independent(
         "stock",
         "index",
     }
+
+
+def test_capabilities_page_renders(client):
+    response = client.get("/capabilities")
+    assert response.status_code == 200
+    body = response.text
+    assert "能力清单" in body
+    assert "MCP 工具" in body
+    assert "provider_status" in body
+    assert "market_bars" in body

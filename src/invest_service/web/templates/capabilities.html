@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% set active_page = "capabilities" %}
+{% block title %}能力清单 · Invest{% endblock %}
+{% block content %}
+<section class="page-heading">
+    <div>
+        <h1>能力清单</h1>
+        <p>数据、来源、工具与边界。额度与定时任务来自运行中的配置，其余为代码内维护的清单。</p>
+    </div>
+</section>
+
+<div class="metric-grid">
+    <div class="metric"><span>数据表</span><strong>{{ tables|length }}</strong></div>
+    <div class="metric"><span>MCP 工具</span><strong>{{ total_tools }}</strong></div>
+    <div class="metric"><span>外部数据源</span><strong>{{ providers|length }}</strong></div>
+    <div class="metric"><span>定时任务</span><strong>{{ tasks|length }}</strong></div>
+    <div class="metric"><span>缓存</span><strong>{{ "开启" if cache_enabled else "关闭" }}</strong></div>
+    <div class="metric"><span>历史行情链</span><strong style="font-size:12px">{{ priority }}</strong></div>
+</div>
+
+<section class="panel">
+    <div class="panel-header"><h2 class="panel-title">基础数据（本地库）</h2></div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr><th>表</th><th>内容</th></tr></thead>
+            <tbody>
+            {% for table in tables %}
+                <tr><td><code>{{ table.name }}</code></td><td class="muted">{{ table.desc }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header">
+        <h2 class="panel-title">数据来源与额度</h2>
+        <span class="badge">0 = 不限制</span>
+    </div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr><th>来源</th><th>覆盖</th><th class="text-right">每日上限</th><th class="text-right">今日已用</th></tr>
+            </thead>
+            <tbody>
+            {% for provider in providers %}
+                <tr>
+                    <td><strong>{{ provider.name }}</strong><div class="muted">{{ provider.key }}</div></td>
+                    <td class="muted">{{ provider.coverage }}</td>
+                    <td class="text-right">{{ provider.limit if provider.limit else "不限" }}</td>
+                    <td class="text-right" data-usage="{{ provider.key }}">--</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="muted" style="margin-top:8px">
+        超限自动熔断：日额度用完 → 次日恢复；余额/积分不足 → 保持禁用，充值后可在
+        <code>provider_status</code> / <code>provider_reset</code> 处理，或等每日 09:10 自动探测。
+    </p>
+</section>
+
+<section class="panel">
+    <div class="panel-header"><h2 class="panel-title">定时任务</h2></div>
+    <div class="table-wrap">
+        <table class="data-table">
+            <thead><tr><th>任务</th><th>频率</th><th>Celery 任务名</th></tr></thead>
+            <tbody>
+            {% for task in tasks %}
+                <tr>
+                    <td>{{ task.name }}</td>
+                    <td class="muted">{{ task.cadence }}</td>
+                    <td><code>{{ task.task }}</code></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-header"><h2 class="panel-title">MCP 工具（{{ total_tools }} 个）</h2></div>
+    {% for group in groups %}
+    <div style="margin-bottom:16px">
+        <h3 style="font-size:13px;margin:0 0 8px">
+            {{ group.name }} <span class="muted" style="font-weight:400">{{ group.count }}</span>
+        </h3>
+        <div class="tag-list-meta">
+            {% for tool in group.tools %}
+            <code style="display:inline-block;margin:0 6px 6px 0;padding:2px 6px;border:1px solid var(--line);border-radius:4px">{{ tool }}</code>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</section>
+
+<section class="panel">
+    <div class="panel-header"><h2 class="panel-title">边界（明确不提供）</h2></div>
+    <ul class="muted" style="margin:0;padding-left:18px;line-height:1.9">
+        {% for item in boundaries %}
+        <li>{{ item }}</li>
+        {% endfor %}
+    </ul>
+</section>
+
+<section class="panel">
+    <div class="panel-header"><h2 class="panel-title">入口</h2></div>
+    <ul class="muted" style="margin:0;padding-left:18px;line-height:1.9">
+        <li>MCP（Agent 用）：<code>POST /mcp/</code>，Streamable HTTP</li>
+        <li>REST（脚本用）：<code>/api/v1/*</code>，完整 schema 见 <a href="/openapi.json">openapi.json</a></li>
+        <li>额度明细：<a href="/api/v1/external/provider-usage">/api/v1/external/provider-usage</a></li>
+        <li>skill 留档：<a href="/api/v1/external/skill-runs">/api/v1/external/skill-runs</a></li>
+        <li>机器可读说明：<a href="/llms.txt">/llms.txt</a></li>
+    </ul>
+</section>
+
+<script>
+(async () => {
+    try {
+        const response = await fetch("/api/v1/external/provider-usage", {cache: "no-store"});
+        if (!response.ok) return;
+        const rows = await response.json();
+        const byProvider = {};
+        for (const row of rows) byProvider[row.provider] = (byProvider[row.provider] || 0) + row.calls;
+        document.querySelectorAll("[data-usage]").forEach((cell) => {
+            cell.textContent = byProvider[cell.dataset.usage] || 0;
+        });
+    } catch (error) {
+        /* 用量取不到不影响页面 */
+    }
+})();
+</script>
+{% endblock %}
