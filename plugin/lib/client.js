@@ -829,7 +829,9 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState(null);
       const [datesLoaded, setDatesLoaded] = useState(false);
       const [nonce, setNonce] = useState(0);
+      const [size, setSize] = useState({ w: 900, h: 420 });
       const timer = useRef(null);
+      const boxRef = useRef(null);
 
       useEffect(() => {
         let alive = true;
@@ -845,6 +847,20 @@ window.__ModuleLoader__.load({
           .catch(() => {});
         return () => { alive = false; };
       }, []);
+
+      useEffect(() => {
+        const el = boxRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return undefined;
+        const measure = (width) => {
+          const w = Math.max(560, Math.round(width));
+          const h = Math.min(520, Math.max(320, Math.round(w * 0.42)));
+          setSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+        };
+        const observer = new ResizeObserver((entries) => measure(entries[0].contentRect.width));
+        observer.observe(el);
+        measure(el.getBoundingClientRect().width);
+        return () => observer.disconnect();
+      }, [datesLoaded]);
 
       useEffect(() => {
         if (!date) return undefined;
@@ -908,8 +924,8 @@ window.__ModuleLoader__.load({
       maxAbs = maxAbs || 1;
       const maxT = Math.max(Math.abs(raceTransform(maxAbs, scaleMode)), 1e-9);
 
-      const W = 1000;
-      const H = 460;
+      const W = size.w;
+      const H = size.h;
       const pad = { left: 70, right: 132, top: 18, bottom: 30 };
       const plotW = W - pad.left - pad.right;
       const plotH = H - pad.top - pad.bottom;
@@ -944,9 +960,11 @@ window.__ModuleLoader__.load({
           .filter((item) => item.value !== null && item.value !== undefined)
           .sort((a, b) => b.value - a.value)
           .slice(0, 16);
+        const minY = pad.top + 8;
+        const maxY = pad.top + plotH - 8;
         for (const item of candidates) {
-          const y = yAt(item.value);
-          if (used.some((prev) => Math.abs(prev - y) < 12)) continue;
+          const y = Math.min(maxY, Math.max(minY, yAt(item.value)));
+          if (used.some((prev) => Math.abs(prev - y) < 15)) continue;
           used.push(y);
           endLabels.push({ ...item, y });
         }
@@ -998,8 +1016,11 @@ window.__ModuleLoader__.load({
           h('span', {}, `${frame + 1} / ${count}`),
         ),
         h(
+          'div',
+          { ref: boxRef, style: { width: '100%' } },
+          h(
           'svg',
-          { viewBox: `0 0 ${W} ${H}`, style: { width: '100%', height: 'auto', display: 'block' }, role: 'img' },
+          { viewBox: `0 0 ${W} ${H}`, style: { width: '100%', height: H + 'px', display: 'block' }, role: 'img' },
           ticks.map((value, i) => h('g', { key: 'tick' + i },
             h('line', {
               x1: pad.left, x2: pad.left + plotW, y1: yAt(value), y2: yAt(value),
@@ -1028,7 +1049,11 @@ window.__ModuleLoader__.load({
             y: item.y + 3.5,
             fill: item.color,
             fontSize: 10.5,
+            stroke: 'var(--dsw-surface-primary,#fff)',
+            strokeWidth: 3,
+            paintOrder: 'stroke',
           }, item.name)),
+          ),
         ),
         h(
           'div',
