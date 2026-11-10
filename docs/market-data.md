@@ -111,6 +111,7 @@ akshare,eastmoney,tushare,wind,iwencai
 | `iwencai_screen` | 问财 | 自然语言选股 | 6 小时 |
 | `yingmi_fund_search` / `_detail` / `_performance` / `_nav` / `_risk` / `_diagnosis` | 盈米 | 基金检索、档案、业绩、净值、风险、综合诊断 | 6 小时 |
 | `yingmi_fund_news` | 盈米 | 基金相关财经资讯 | 3 小时 |
+| `mx_finance` | 妙想 | 一个入口按 `domain` 覆盖 A股/基金/港股/美股/指数板块/债券/宏观/跨市场/资讯/公告/选股 | 6h（资讯公告 3h） |
 
 实现要点：
 
@@ -118,6 +119,8 @@ akshare,eastmoney,tushare,wind,iwencai
   设置 `EXTERNAL_CACHE_ENABLED=false` 可关闭，工具参数 `refresh=true` 可单次绕过。
 - **运行留档**：非结构化的 `wind_alice` 每次真实执行写一条 `skill_runs`（skill、prompt、输出、
   耗时、是否缓存命中），可用 `list_skill_runs` 回看；缓存命中时也会记录一条 `cache_hit=true`。
+- **妙想**：`INVEST_MX_API_KEY` 走 `mxapi.eastmoney.com/mxds/mcp`（请求头 `em_api_key`），
+  按积分计费；11 个工具都只收自然语言 `query`，所以收口成一个 `mx_finance(domain, query)`。
 - **盈米**：`INVEST_YINGMI_API_KEY` 走 `stargate.yingmi.com/mcp/v2`，服务无状态、静态 `x-api-key`；
   只暴露只读的基金/资讯类工具，不含 `RenderHtmlToPdf` 这类生成类工具。
 - **额度**：问财按天计次，耗尽时返回 401 并在错误里写明「当日额度已用完」；Wind Alice 有独立的
