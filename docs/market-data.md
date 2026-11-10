@@ -111,6 +111,7 @@ akshare,eastmoney,tushare,wind,iwencai
 | `iwencai_screen` | 问财 | 自然语言选股 | 6 小时 |
 | `yingmi_fund_search` / `_detail` / `_performance` / `_nav` / `_risk` / `_diagnosis` | 盈米 | 基金检索、档案、业绩、净值、风险、综合诊断 | 6 小时 |
 | `yingmi_fund_news` | 盈米 | 基金相关财经资讯 | 3 小时 |
+| `tdx_quote` / `tdx_kline` / `tdx_stock_lookup` / `tdx_api_data` / `tdx_screener` / `tdx_news` | 通达信 | 快照、K 线、标的检索、80+ 预设数据、自然语言选股、资讯/研报/公告/宏观 | 1 分钟–6 小时 |
 | `indexhub_etf_search` / `_detail` / `_holdings` / `_dividends` / `_by_stock` | 指数直通车 | 全市场 ETF 检索、档案（费率/规模/跟踪误差）、持仓、分红、按股票反查 ETF | 6 小时 |
 | `indexhub_index_detail` / `indexhub_index_valuation` | 指数直通车 | 指数档案与 PE/PB/PS 及 1Y–10Y 分位 | 6 小时 |
 | `mx_finance` | 妙想 | 一个入口按 `domain` 覆盖 A股/基金/港股/美股/指数板块/债券/宏观/跨市场/资讯/公告/选股 | 6h（资讯公告 3h） |
@@ -123,6 +124,9 @@ akshare,eastmoney,tushare,wind,iwencai
   耗时、是否缓存命中），可用 `list_skill_runs` 回看；缓存命中时也会记录一条 `cache_hit=true`。
 - **妙想**：`INVEST_MX_API_KEY` 走 `mxapi.eastmoney.com/mxds/mcp`（请求头 `em_api_key`），
   按积分计费；11 个工具都只收自然语言 `query`，所以收口成一个 `mx_finance(domain, query)`。
+- **通达信**：`INVEST_TDX_API_KEY` 走 SkillHub MCP（`testmcp.tdx.com.cn:3001/qclawmcp`），
+  普通 `Authorization: Bearer`，需要 `mcp-session-id` 会话；**不是** TdxAiData 后台库那套 key。
+  返回体是「一句话摘要 + 内嵌 JSON」的文本块，工具原样透传。
 - **指数直通车**：`INVEST_INDEXHUB_API_KEY` 走 `www.etf.com.cn/api/etf-api-service`，
   不是 MCP 而是 REST（`Authorization: Bearer` + `X-Caller-Type: external`）；
   ETF 接口在 `/skill/v1/*`（POST），指数详情/估值在 `/skill/v3/*`（GET）。
