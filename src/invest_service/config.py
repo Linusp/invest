@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     provider_priority: str = "akshare,eastmoney,tushare,wind,iwencai"
     # 外部能力（Wind/iFinD/问财）的响应缓存，减少额度消耗。
     external_cache_enabled: bool = True
+    # 每日调用上限（0 = 不限制）。问财进阶版约 500 次/天，iFinD 试用为总量额度。
+    wind_daily_limit: int = Field(default=0, ge=0)
+    iwencai_daily_limit: int = Field(default=0, ge=0)
+    ifind_daily_limit: int = Field(default=0, ge=0)
 
     model_config = SettingsConfigDict(
         env_prefix="INVEST_",

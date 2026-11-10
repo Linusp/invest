@@ -378,6 +378,21 @@ class ExternalCache(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
+class ProviderUsage(Base):
+    """Per-provider daily call counters for metered external sources."""
+
+    __tablename__ = "provider_usage"
+    __table_args__ = (UniqueConstraint("provider", "day", name="uq_provider_usage_day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), index=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    calls: Mapped[int] = mapped_column(default=0)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class SkillRun(Base):
     """One execution of an unstructured skill (e.g. Wind Alice workflows)."""
 

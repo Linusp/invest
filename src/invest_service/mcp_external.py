@@ -27,6 +27,7 @@ from .providers.wind_skills import (
     resolve_alice_skill,
 )
 from .services.external_cache import ExternalCacheService, cache_key
+from .services.provider_usage import ProviderUsageService
 from .services.skill_runs import SkillRunService
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,18 @@ def _require_wind_key() -> str:
     if not key:
         raise WindSkillError("WIND_API_KEY 未配置，无法调用 Wind 能力")
     return key
+
+
+def _metered(session, provider: str, limit: int, fetch):
+    """先检查当日额度，再执行并记账；缓存命中的路径不会走到这里。"""
+    usage = ProviderUsageService(session)
+    try:
+        usage.ensure_capacity(provider, limit)
+    except ValueError as exc:
+        raise WindSkillError(str(exc)) from exc
+    payload = fetch()
+    usage.record(provider)
+    return payload
 
 
 def _require_ifind_key() -> str:
@@ -97,7 +110,12 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
             cache = ExternalCacheService(session)
 
             def fetch() -> dict[str, Any]:
-                return WindDataTools(key).call(tool, question)
+                return _metered(
+                    session,
+                    "wind",
+                    get_settings().wind_daily_limit,
+                    lambda: WindDataTools(key).call(tool, question),
+                )
 
             payload, hit = cache.get_or_fetch(
                 "wind",
@@ -150,7 +168,12 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
                 }
 
             started = time.monotonic()
-            output = WindAliceClient(key).run(prompt, resolved)
+            output = _metered(
+                session,
+                "wind",
+                settings.wind_daily_limit,
+                lambda: WindAliceClient(key).run(prompt, resolved),
+            )
             duration_ms = int((time.monotonic() - started) * 1000)
             run_id = runs.record(
                 source="wind_alice",
@@ -200,15 +223,20 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
             cache = ExternalCacheService(session)
 
             def fetch() -> dict[str, Any]:
-                payload = IfindMcpClient(key).call(
-                    "news",
-                    "search_news",
-                    {
-                        "query": query,
-                        "size": size,
-                        "time_start": time_start,
-                        "time_end": time_end,
-                    },
+                payload = _metered(
+                    session,
+                    "ifind",
+                    get_settings().ifind_daily_limit,
+                    lambda: IfindMcpClient(key).call(
+                        "news",
+                        "search_news",
+                        {
+                            "query": query,
+                            "size": size,
+                            "time_start": time_start,
+                            "time_end": time_end,
+                        },
+                    ),
                 )
                 return {"items": _ifind_news_items(payload)}
 
@@ -245,15 +273,20 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
             cache = ExternalCacheService(session)
 
             def fetch() -> dict[str, Any]:
-                payload = IfindMcpClient(key).call(
-                    "news",
-                    "search_notice",
-                    {
-                        "query": query,
-                        "size": size,
-                        "time_start": time_start,
-                        "time_end": time_end,
-                    },
+                payload = _metered(
+                    session,
+                    "ifind",
+                    get_settings().ifind_daily_limit,
+                    lambda: IfindMcpClient(key).call(
+                        "news",
+                        "search_notice",
+                        {
+                            "query": query,
+                            "size": size,
+                            "time_start": time_start,
+                            "time_end": time_end,
+                        },
+                    ),
                 )
                 return {"items": _ifind_news_items(payload)}
 
@@ -279,7 +312,14 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
             cache = ExternalCacheService(session)
 
             def fetch() -> dict[str, Any]:
-                payload = IfindMcpClient(key).call("index", "sector_data", {"query": query})
+                payload = _metered(
+                    session,
+                    "ifind",
+                    get_settings().ifind_daily_limit,
+                    lambda: IfindMcpClient(key).call(
+                        "index", "sector_data", {"query": query}
+                    ),
+                )
                 return {"markdown": _ifind_markdown(payload)}
 
             payload, hit = cache.get_or_fetch(
@@ -307,7 +347,12 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
             cache = ExternalCacheService(session)
 
             def fetch() -> dict[str, Any]:
-                payload = provider.query(question, limit=min(limit, 100))
+                payload = _metered(
+                    session,
+                    "iwencai",
+                    settings.iwencai_daily_limit,
+                    lambda: provider.query(question, limit=min(limit, 100)),
+                )
                 return {
                     "count": payload.get("code_count"),
                     "rows": payload.get("datas") or [],

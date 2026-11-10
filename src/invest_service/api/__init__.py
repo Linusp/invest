@@ -1,6 +1,7 @@
 from .assets import router as assets_router
 from .commentaries import router as commentaries_router
 from .exchange_rates import router as exchange_rates_router
+from .external import router as external_router
 from .information import router as information_router
 from .market_scopes import router as market_scopes_router
 from .portfolios import router as portfolios_router
@@ -13,6 +14,7 @@ __all__ = [
     "assets_router",
     "commentaries_router",
     "exchange_rates_router",
+    "external_router",
     "information_router",
     "market_scopes_router",
     "portfolios_router",

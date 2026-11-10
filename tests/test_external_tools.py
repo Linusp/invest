@@ -136,3 +136,32 @@ def test_extract_alice_result_raises_on_failed_state():
     with pytest.raises(Exception) as exc:
         extract_alice_result(payload)
     assert "服务繁忙" in str(exc.value)
+
+
+def test_provider_usage_counts_and_limits(session_factory):
+    from invest_service.services.provider_usage import ProviderUsageService
+
+    with session_factory() as session:
+        usage = ProviderUsageService(session)
+        assert usage.count("wind") == 0
+        usage.record("wind")
+        usage.record("wind", 2)
+        assert usage.count("wind") == 3
+        usage.ensure_capacity("wind", 10)
+        try:
+            usage.ensure_capacity("wind", 3)
+        except ValueError as exc:
+            assert "上限" in str(exc)
+        else:  # pragma: no cover
+            raise AssertionError("超限应当报错")
+        assert usage.recent(days=1)[0]["calls"] == 3
+
+
+def test_external_rest_endpoints(client):
+    response = client.get("/api/v1/external/provider-usage")
+    assert response.status_code == 200
+    assert response.json() == []
+
+    response = client.get("/api/v1/external/skill-runs")
+    assert response.status_code == 200
+    assert response.json() == []
