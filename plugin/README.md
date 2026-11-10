@@ -4,7 +4,7 @@
 > 不参与镜像构建，只在 DSH 里作为客户端插件加载。
 
 把本地 [invest 服务](../../homelab-infra/invest)（`127.0.0.1:8001`）的数据接进 DeepSeek Harness：
-左侧栏一个「投资」入口，面板内四个看板。
+左侧栏一个「投资」入口，面板内五个看板。
 
 ## 看板
 
@@ -14,6 +14,7 @@
 | 自选 | 按标签分组筛选、涨跌幅排序、30 日迷你走势、跳转原服务详情 | `/assets` `/tags` `/assets/{symbol}/history` |
 | 组合 | 多账户切换、资产/盈亏/仓位、持仓明细与收益、仓位分布条 | `/portfolios` `/portfolios/{id}` |
 | 板块资金流 | 按主力/超大/大/中/小单、涨跌幅、市值排序，带横向强弱条 | `/sector-capital-flows` |
+| 资金流回放 | 多折线回放开盘到收盘：一条线一个板块，零轴上方流入、下方流出，可播放/暂停/拖进度 | `/sector-capital-flows/intraday` `/sector-capital-flows/intraday/dates` |
 
 ## 架构
 
