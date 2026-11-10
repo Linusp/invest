@@ -81,6 +81,16 @@ window.__ModuleLoader__.load({
 .iv-link:hover{text-decoration:underline}
 .iv-scroll-x{overflow-x:auto}
 .iv-race{display:flex;flex-direction:column;gap:10px}
+.iv-seg{display:inline-flex;gap:2px;background:var(--dsw-surface-secondary,#f3f4f6);border-radius:6px;padding:2px}
+.iv-seg-btn{border:0;background:transparent;border-radius:4px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--dsw-text-secondary,#5c6370)}
+.iv-seg-btn.on{background:#fff;color:var(--dsw-text-primary,#1f2329);box-shadow:0 1px 2px rgba(20,30,45,.12)}
+.iv-race-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.iv-mini{border:1px solid var(--dsw-border-subtle,#eceef2);border-radius:8px;padding:8px 10px}
+.iv-mini-head{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;margin-bottom:2px}
+.iv-mini-head strong{font-weight:600}
+.iv-mini-legend{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:10.5px;color:var(--dsw-text-tertiary,#8a9099);margin-top:2px}
+.iv-mini-legend i{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:4px}
+.iv-pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;font-size:12px}
 .iv-race-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:11.5px;color:var(--dsw-text-secondary,#5c6370)}
 .iv-race-legend-item{display:inline-flex;align-items:center;gap:5px;font-variant-numeric:tabular-nums}
 .iv-race-legend-item i{width:9px;height:9px;border-radius:2px;display:inline-block}
@@ -816,6 +826,21 @@ window.__ModuleLoader__.load({
       return (abs >= 10 || Number.isInteger(yi) ? yi.toFixed(0) : yi.toFixed(1)) + '亿';
     }
 
+    const FIELD_COLORS = {
+      main_net: '#c0392b',
+      super_large_net: '#d35400',
+      large_net: '#e67e22',
+      mid_net: '#2e86c1',
+      small_net: '#8e44ad',
+    };
+    const INFLOW_SHADES = ['#c0392b', '#b03a2e', '#d35400', '#a93226', '#cb4335'];
+    const OUTFLOW_SHADES = ['#1e8449', '#117a65', '#239b56', '#196f3d', '#145a32'];
+
+    function directionColor(index, value) {
+      const shades = (value ?? 0) >= 0 ? INFLOW_SHADES : OUTFLOW_SHADES;
+      return shades[index % shades.length];
+    }
+
     function SectorRace({ tick }) {
       const [dates, setDates] = useState([]);
       const [date, setDate] = useState('');
@@ -823,7 +848,10 @@ window.__ModuleLoader__.load({
       const [top, setTop] = useState(20);
       const [speed, setSpeed] = useState(50);
       const [scaleMode, setScaleMode] = useState('log');
+      const [view, setView] = useState('race');
       const [data, setData] = useState(null);
+      const [grid, setGrid] = useState(null);
+      const [page, setPage] = useState(0);
       const [index, setIndex] = useState(0);
       const [playing, setPlaying] = useState(false);
       const [error, setError] = useState(null);
@@ -860,7 +888,7 @@ window.__ModuleLoader__.load({
         observer.observe(el);
         measure(el.getBoundingClientRect().width);
         return () => observer.disconnect();
-      }, [datesLoaded]);
+      }, [datesLoaded, view]);
 
       useEffect(() => {
         if (!date) return undefined;
@@ -882,6 +910,40 @@ window.__ModuleLoader__.load({
           .catch((e) => { if (alive) setError(String(e.message || e)); });
         return () => { alive = false; };
       }, [date, field, top, tick, nonce]);
+
+      // 单板块网格：一次取 5 个资金流字段再按板块合并
+      useEffect(() => {
+        if (view !== 'grid' || !date) return undefined;
+        let alive = true;
+        Promise.all(RACE_FIELDS.map(([name]) => {
+          const params = new URLSearchParams({ top: String(top), field: name, trade_date: date });
+          return fetch(`${API}/api/v1/sector-capital-flows/intraday?${params}`, { cache: 'no-store' })
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null);
+        }))
+          .then((results) => {
+            if (!alive) return;
+            const base = results.find((item) => item && item.times && item.times.length);
+            if (!base) { setGrid({ times: [], sectors: [] }); return; }
+            const sectors = new Map();
+            for (const [name, result] of RACE_FIELDS.map(([fieldName], i) => [fieldName, results[i]])) {
+              if (!result || !result.series) continue;
+              for (const item of result.series) {
+                const entry = sectors.get(item.sector_code) || {
+                  code: item.sector_code,
+                  name: item.sector_name,
+                  values: {},
+                };
+                entry.values[name] = item.values;
+                sectors.set(item.sector_code, entry);
+              }
+            }
+            setGrid({ times: base.times, sectors: [...sectors.values()] });
+            setPage(0);
+          })
+          .catch(() => { if (alive) setGrid({ times: [], sectors: [] }); });
+        return () => { alive = false; };
+      }, [view, date, top, tick]);
 
       useEffect(() => {
         if (!playing || !data || !data.times.length) {
@@ -907,13 +969,78 @@ window.__ModuleLoader__.load({
       if (!dates.length) {
         return h(Empty, {}, '暂无盘中资金流数据；交易时段每 5 分钟采集一次。');
       }
-      if (!data) return h(Loading, { text: '加载盘中资金流…' });
+
+      const controls = h(
+        'div',
+        { className: 'iv-row' },
+        h('div', { className: 'iv-seg' },
+          [['race', '总览曲线'], ['grid', '单板块']].map(([value, label]) =>
+            h('button', {
+              key: value,
+              className: 'iv-seg-btn' + (view === value ? ' on' : ''),
+              onClick: () => setView(value),
+            }, label)),
+        ),
+        h('select', { className: 'iv-select', value: date, onChange: (e) => setDate(e.target.value) },
+          dates.map((d) => h('option', { key: d, value: d }, d))),
+        view === 'race' ? h('select', { className: 'iv-select', value: field, onChange: (e) => setField(e.target.value) },
+          RACE_FIELDS.map(([value, label]) => h('option', { key: value, value }, label))) : null,
+        h('select', { className: 'iv-select', value: String(top), onChange: (e) => setTop(Number(e.target.value)) },
+          [10, 15, 20, 30].map((n) => h('option', { key: n, value: String(n) }, `前 ${n}`))),
+        view === 'race' ? h('select', { className: 'iv-select', value: scaleMode, onChange: (e) => setScaleMode(e.target.value) },
+          [['log', '对数刻度'], ['linear', '线性刻度']].map(([value, label]) => h('option', { key: value, value }, label))) : null,
+        view === 'race' ? h('select', { className: 'iv-select', value: String(speed), onChange: (e) => setSpeed(Number(e.target.value)) },
+          [200, 100, 50, 25].map((ms) => h('option', { key: ms, value: String(ms) }, `${200 / ms}x`))) : null,
+        view === 'race' ? h('button', {
+          className: 'iv-btn' + (playing ? ' on' : ''),
+          onClick: () => {
+            if (playing) { setPlaying(false); return; }
+            if (index >= data.times.length - 1) setIndex(0);
+            setPlaying(true);
+          },
+        }, playing ? '暂停' : '播放') : null,
+        view === 'race' ? h('button', { className: 'iv-btn', onClick: () => { setPlaying(false); setIndex(0); } }, '回到开盘') : null,
+      );
+
+      if (view === 'grid') {
+        const times = grid ? grid.times : [];
+        const sectors = grid ? grid.sectors : [];
+        const perPage = 6;
+        const pageCount = Math.max(1, Math.ceil(sectors.length / perPage));
+        const current = Math.min(page, pageCount - 1);
+        const visible = sectors.slice(current * perPage, current * perPage + perPage);
+
+        return h(
+          'div',
+          { className: 'iv-race' },
+          controls,
+          h('div', { ref: boxRef, style: { width: '100%' } },
+            !grid ? h(Loading, { text: '加载单板块数据…' }) : null,
+            grid && !times.length ? h(Empty, {}, '该交易日没有盘中资金流数据。') : null,
+            grid && times.length
+              ? h('div', { className: 'iv-race-grid' }, visible.map((sector) =>
+                  h(MiniBoard, { key: sector.code, sector, times })))
+              : null,
+          ),
+          h(
+            'div',
+            { className: 'iv-pager' },
+            h('span', { className: 'iv-muted' }, `共 ${sectors.length} 个板块 · 第 ${current + 1} / ${pageCount} 页`),
+            h('button', { className: 'iv-btn', disabled: current === 0, onClick: () => setPage(current - 1) }, '上一页'),
+            h('button', { className: 'iv-btn', disabled: current >= pageCount - 1, onClick: () => setPage(current + 1) }, '下一页'),
+          ),
+          h('div', { className: 'iv-muted', style: { fontSize: 11 } },
+            '每个板块一张图：主力/超大/大/中/小五条资金流曲线，显示当日完整走势。数据：东方财富（延迟行情）。'),
+        );
+      }
+
+      if (!data) return h('div', { className: 'iv-race' }, controls, h(Loading, { text: '加载盘中资金流…' }));
       if (!data.times.length) {
-        return h(Empty, {}, '该交易日没有盘中资金流数据。');
+        return h('div', { className: 'iv-race' }, controls, h(Empty, {}, '该交易日没有盘中资金流数据。'));
       }
 
       const count = data.times.length;
-      const series = data.series.map((item, i) => ({ ...item, color: RACE_PALETTE[i % RACE_PALETTE.length] }));
+      const series = data.series.map((item) => ({ ...item }));
 
       let maxAbs = 0;
       for (const item of series) {
@@ -926,81 +1053,66 @@ window.__ModuleLoader__.load({
 
       const W = size.w;
       const H = size.h;
-      const pad = { left: 70, right: 132, top: 18, bottom: 30 };
+      const pad = { left: 70, right: 178, top: 18, bottom: 30 };
       const plotW = W - pad.left - pad.right;
       const plotH = H - pad.top - pad.bottom;
       const zeroY = pad.top + plotH / 2;
       const xAt = (i) => pad.left + (count <= 1 ? 0 : (i / (count - 1)) * plotW);
       const yAt = (value) => zeroY - (raceTransform(value, scaleMode) / maxT) * (plotH / 2);
       const ticks = raceTicks(maxAbs, scaleMode);
+      const plotRight = pad.left + plotW;
 
-      const paths = series.map((item) => {
+      // 右列标签：按当前值排序后强制最小间距，再用引线连回各自的线端点
+      const labelItems = series
+        .map((item, i) => ({ name: item.sector_name, value: item.values[frame], index: i }))
+        .filter((item) => item.value !== null && item.value !== undefined)
+        .sort((a, b) => b.value - a.value);
+      const labelYs = labelItems.map((item) =>
+        Math.min(pad.top + plotH - 8, Math.max(pad.top + 8, yAt(item.value))));
+      for (let i = 1; i < labelYs.length; i += 1) {
+        if (labelYs[i] < labelYs[i - 1] + 14) labelYs[i] = labelYs[i - 1] + 14;
+      }
+      const overflow = labelYs.length ? labelYs[labelYs.length - 1] - (pad.top + plotH - 8) : 0;
+      if (overflow > 0) for (let i = 0; i < labelYs.length; i += 1) labelYs[i] -= overflow;
+
+      const paths = series.map((item, i) => {
+        const current = item.values[frame];
+        const color = directionColor(i, current);
         let d = '';
         let started = false;
-        for (let i = 0; i <= frame; i += 1) {
-          const value = item.values[i];
+        for (let k = 0; k <= frame; k += 1) {
+          const value = item.values[k];
           if (value === null || value === undefined) { started = false; continue; }
-          d += `${started ? 'L' : 'M'}${xAt(i).toFixed(1)},${yAt(value).toFixed(1)}`;
+          d += `${started ? 'L' : 'M'}${xAt(k).toFixed(1)},${yAt(value).toFixed(1)}`;
           started = true;
         }
-        const current = item.values[frame];
         return h('g', { key: item.sector_code },
-          h('path', { d, fill: 'none', stroke: item.color, strokeWidth: 1.6, strokeLinejoin: 'round', strokeLinecap: 'round', opacity: 0.9 }),
+          h('path', { d, fill: 'none', stroke: color, strokeWidth: 1.5, strokeLinejoin: 'round', strokeLinecap: 'round', opacity: 0.85 }),
           current === null || current === undefined ? null
-            : h('circle', { cx: xAt(frame), cy: yAt(current), r: 2.6, fill: item.color }),
+            : h('circle', { cx: xAt(frame), cy: yAt(current), r: 2.4, fill: color }),
         );
       });
 
-      // 线尾标注板块名：按当前值排序，位置太近的跳过，避免重叠成一团
-      const endLabels = [];
-      {
-        const used = [];
-        const candidates = series
-          .map((item) => ({ name: item.sector_name, color: item.color, value: item.values[frame] }))
-          .filter((item) => item.value !== null && item.value !== undefined)
-          .sort((a, b) => b.value - a.value)
-          .slice(0, 16);
-        const minY = pad.top + 8;
-        const maxY = pad.top + plotH - 8;
-        for (const item of candidates) {
-          const y = Math.min(maxY, Math.max(minY, yAt(item.value)));
-          if (used.some((prev) => Math.abs(prev - y) < 15)) continue;
-          used.push(y);
-          endLabels.push({ ...item, y });
-        }
-      }
-
-      const legendRows = series
-        .map((item) => ({ ...item, value: item.values[frame] }))
-        .filter((item) => item.value !== null && item.value !== undefined)
-        .sort((a, b) => b.value - a.value);
+      const labelNodes = labelItems.map((item, i) => {
+        const y = labelYs[i];
+        const color = directionColor(item.index, item.value);
+        return h('g', { key: 'label' + item.name },
+          h('path', {
+            d: `M${plotRight},${yAt(item.value).toFixed(1)}L${plotRight + 12},${y.toFixed(1)}`,
+            stroke: color, strokeWidth: 0.8, fill: 'none', opacity: 0.55,
+          }),
+          h('circle', { cx: plotRight + 12, cy: y, r: 2, fill: color }),
+          h('text', {
+            x: plotRight + 18, y: y + 3.4, fill: color, fontSize: 10.5,
+            stroke: 'var(--dsw-surface-primary,#fff)', strokeWidth: 3, paintOrder: 'stroke',
+          }, `${item.name} ${(item.value / 1e8).toFixed(1)}亿`),
+        );
+      });
 
       return h(
         'div',
         { className: 'iv-race' },
-        h(
-          'div',
-          { className: 'iv-row' },
-          h('select', { className: 'iv-select', value: date, onChange: (e) => setDate(e.target.value) },
-            dates.map((d) => h('option', { key: d, value: d }, d))),
-          h('select', { className: 'iv-select', value: field, onChange: (e) => setField(e.target.value) },
-            RACE_FIELDS.map(([value, label]) => h('option', { key: value, value }, label))),
-          h('select', { className: 'iv-select', value: String(top), onChange: (e) => setTop(Number(e.target.value)) },
-            [10, 15, 20, 30].map((n) => h('option', { key: n, value: String(n) }, `前 ${n}`))),
-          h('select', { className: 'iv-select', value: scaleMode, onChange: (e) => setScaleMode(e.target.value) },
-            [['log', '对数刻度'], ['linear', '线性刻度']].map(([value, label]) => h('option', { key: value, value }, label))),
-          h('select', { className: 'iv-select', value: String(speed), onChange: (e) => setSpeed(Number(e.target.value)) },
-            [200, 100, 50, 25].map((ms) => h('option', { key: ms, value: String(ms) }, `${200 / ms}x`))),
-          h('button', {
-            className: 'iv-btn' + (playing ? ' on' : ''),
-            onClick: () => {
-              if (playing) { setPlaying(false); return; }
-              if (index >= count - 1) setIndex(0);
-              setPlaying(true);
-            },
-          }, playing ? '暂停' : '播放'),
-          h('button', { className: 'iv-btn', onClick: () => { setPlaying(false); setIndex(0); } }, '回到开盘'),
-        ),
+        controls,
         h(
           'div',
           { className: 'iv-race-clock' },
@@ -1015,59 +1127,109 @@ window.__ModuleLoader__.load({
           }),
           h('span', {}, `${frame + 1} / ${count}`),
         ),
-        h(
-          'div',
-          { ref: boxRef, style: { width: '100%' } },
-          h(
-          'svg',
-          { viewBox: `0 0 ${W} ${H}`, style: { width: '100%', height: H + 'px', display: 'block' }, role: 'img' },
-          ticks.map((value, i) => h('g', { key: 'tick' + i },
+        h('div', { ref: boxRef, style: { width: '100%' } },
+          h('svg', {
+            viewBox: `0 0 ${W} ${H}`,
+            style: { width: '100%', height: H + 'px', display: 'block' },
+            role: 'img',
+          },
+            ticks.map((value, i) => h('g', { key: 'tick' + i },
+              h('line', {
+                x1: pad.left, x2: plotRight, y1: yAt(value), y2: yAt(value),
+                stroke: value === 0 ? 'var(--dsw-border-default,#c9ccd2)' : 'var(--dsw-border-subtle,#eceef2)',
+                strokeWidth: value === 0 ? 1.2 : 1,
+              }),
+              h('text', {
+                x: pad.left - 8, y: yAt(value) + 3, textAnchor: 'end', fontSize: 10,
+                fill: 'var(--dsw-text-tertiary,#8a9099)',
+              }, raceTickLabel(value)),
+            )),
+            [0, Math.floor(count / 4), Math.floor(count / 2), Math.floor((count * 3) / 4), count - 1]
+              .filter((v, i, arr) => arr.indexOf(v) === i)
+              .map((i) => h('text', {
+                key: 'x' + i, x: xAt(i), y: H - 8, textAnchor: 'middle', fontSize: 10,
+                fill: 'var(--dsw-text-tertiary,#8a9099)',
+              }, data.times[i])),
             h('line', {
-              x1: pad.left, x2: pad.left + plotW, y1: yAt(value), y2: yAt(value),
-              stroke: value === 0 ? 'var(--dsw-border-default,#c9ccd2)' : 'var(--dsw-border-subtle,#eceef2)',
-              strokeWidth: value === 0 ? 1.2 : 1,
+              x1: xAt(frame), x2: xAt(frame), y1: pad.top, y2: pad.top + plotH,
+              stroke: 'var(--dsw-text-tertiary,#8a9099)', strokeWidth: 1, strokeDasharray: '3 3',
             }),
-            h('text', {
-              x: pad.left - 8, y: yAt(value) + 3, textAnchor: 'end', fontSize: 10,
-              fill: 'var(--dsw-text-tertiary,#8a9099)',
-            }, raceTickLabel(value)),
-          )),
-          [0, Math.floor(count / 4), Math.floor(count / 2), Math.floor((count * 3) / 4), count - 1]
-            .filter((v, i, arr) => arr.indexOf(v) === i)
-            .map((i) => h('text', {
-              key: 'x' + i, x: xAt(i), y: H - 8, textAnchor: 'middle', fontSize: 10,
-              fill: 'var(--dsw-text-tertiary,#8a9099)',
-            }, data.times[i])),
-          h('line', {
-            x1: xAt(frame), x2: xAt(frame), y1: pad.top, y2: pad.top + plotH,
-            stroke: 'var(--dsw-text-tertiary,#8a9099)', strokeWidth: 1, strokeDasharray: '3 3',
-          }),
-          paths,
-          endLabels.map((item) => h('text', {
-            key: 'label' + item.name,
-            x: pad.left + plotW + 8,
-            y: item.y + 3.5,
-            fill: item.color,
-            fontSize: 10.5,
-            stroke: 'var(--dsw-surface-primary,#fff)',
-            strokeWidth: 3,
-            paintOrder: 'stroke',
-          }, item.name)),
+            paths,
+            labelNodes,
           ),
         ),
-        h(
-          'div',
-          { className: 'iv-race-legend' },
-          legendRows.map((item) => h('span', { key: item.sector_code, className: 'iv-race-legend-item' },
-            h('i', { style: { background: item.color } }),
-            h('span', {}, item.sector_name),
-            h('b', { className: toneOf(item.value) }, (item.value / 1e8).toFixed(1) + '亿'),
-          )),
-        ),
         h('div', { className: 'iv-muted', style: { fontSize: 11 } },
-          `每根线是一个板块的当日累计净流入：零轴上方为净流入、下方为净流出；共 ${series.length} 个板块。`,
-          scaleMode === 'log' ? '纵轴为对数刻度（以 1 亿为基准的对称 log），压缩量级差异。' : '纵轴为线性刻度。',
+          `每条线一个板块，零轴上方净流入（红）、下方净流出（绿）；共 ${series.length} 个板块。`,
+          scaleMode === 'log' ? '纵轴为对数刻度（1 亿基准的对称 log）。' : '纵轴为线性刻度。',
           '数据：东方财富（延迟行情）。'),
+      );
+    }
+
+    function MiniBoard({ sector, times }) {
+      const W = 360;
+      const H = 150;
+      const pad = { left: 8, right: 52, top: 10, bottom: 14 };
+      const plotW = W - pad.left - pad.right;
+      const plotH = H - pad.top - pad.bottom;
+      const zeroY = pad.top + plotH / 2;
+      const count = times.length;
+      let maxAbs = 0;
+      for (const [, name] of RACE_FIELDS) {
+        for (const value of sector.values[name] || []) {
+          if (value !== null && value !== undefined) maxAbs = Math.max(maxAbs, Math.abs(value));
+        }
+      }
+      maxAbs = maxAbs || 1;
+      const xAt = (i) => pad.left + (count <= 1 ? 0 : (i / (count - 1)) * plotW);
+      const yAt = (value) => zeroY - (value / maxAbs) * (plotH / 2);
+
+      const mainValues = sector.values.main_net || [];
+      const last = [...mainValues].reverse().find((v) => v !== null && v !== undefined) ?? 0;
+
+      return h('div', { className: 'iv-mini' },
+        h('div', { className: 'iv-mini-head' },
+          h('strong', {}, sector.name),
+          h('span', { className: toneOf(last) }, (last / 1e8).toFixed(2) + '亿'),
+        ),
+        h('svg', {
+          viewBox: `0 0 ${W} ${H}`,
+          style: { width: '100%', height: 'auto', display: 'block' },
+          role: 'img',
+        },
+          h('line', {
+            x1: pad.left, x2: pad.left + plotW, y1: zeroY, y2: zeroY,
+            stroke: 'var(--dsw-border-default,#c9ccd2)', strokeWidth: 1,
+          }),
+          RACE_FIELDS.map(([name]) => {
+            const values = sector.values[name] || [];
+            let d = '';
+            let started = false;
+            for (let i = 0; i < values.length; i += 1) {
+              const value = values[i];
+              if (value === null || value === undefined) { started = false; continue; }
+              d += `${started ? 'L' : 'M'}${xAt(i).toFixed(1)},${yAt(value).toFixed(1)}`;
+              started = true;
+            }
+            return h('path', {
+              key: name,
+              d,
+              fill: 'none',
+              stroke: FIELD_COLORS[name],
+              strokeWidth: name === 'main_net' ? 1.6 : 1.1,
+              opacity: name === 'main_net' ? 0.95 : 0.7,
+              strokeLinejoin: 'round',
+            });
+          }),
+        ),
+        h('div', { className: 'iv-mini-legend' },
+          RACE_FIELDS.map(([name, label]) => {
+            const values = sector.values[name] || [];
+            const value = [...values].reverse().find((v) => v !== null && v !== undefined) ?? 0;
+            return h('span', { key: name },
+              h('i', { style: { background: FIELD_COLORS[name] } }),
+              `${label} ${(value / 1e8).toFixed(2)}亿`);
+          }),
+        ),
       );
     }
 
