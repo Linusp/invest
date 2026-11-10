@@ -793,12 +793,36 @@ window.__ModuleLoader__.load({
       '#a16207', '#7c3aed',
     ];
 
+    const RACE_LOG_BASE = 1e8; // 对数刻度的基准：1 亿
+
+    function raceTransform(value, mode) {
+      if (mode !== 'log') return value;
+      return Math.sign(value) * Math.log10(1 + Math.abs(value) / RACE_LOG_BASE);
+    }
+
+    function raceTicks(maxAbs, mode) {
+      if (mode !== 'log') return [maxAbs, maxAbs / 2, 0, -maxAbs / 2, -maxAbs];
+      const maxT = Math.log10(1 + maxAbs / RACE_LOG_BASE);
+      const ticks = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000]
+        .map((v) => v * 1e8)
+        .filter((v) => Math.log10(1 + v / RACE_LOG_BASE) <= maxT + 1e-9);
+      return ticks.slice().reverse().map((v) => -v).concat([0], ticks);
+    }
+
+    function raceTickLabel(value) {
+      const yi = value / 1e8;
+      if (yi === 0) return '0';
+      const abs = Math.abs(yi);
+      return (abs >= 10 || Number.isInteger(yi) ? yi.toFixed(0) : yi.toFixed(1)) + '亿';
+    }
+
     function SectorRace({ tick }) {
       const [dates, setDates] = useState([]);
       const [date, setDate] = useState('');
       const [field, setField] = useState('main_net');
       const [top, setTop] = useState(20);
       const [speed, setSpeed] = useState(50);
+      const [scaleMode, setScaleMode] = useState('log');
       const [data, setData] = useState(null);
       const [index, setIndex] = useState(0);
       const [playing, setPlaying] = useState(false);
@@ -875,7 +899,6 @@ window.__ModuleLoader__.load({
       const count = data.times.length;
       const series = data.series.map((item, i) => ({ ...item, color: RACE_PALETTE[i % RACE_PALETTE.length] }));
 
-      // 对称的纵轴范围，零轴居中
       let maxAbs = 0;
       for (const item of series) {
         for (const value of item.values) {
@@ -883,17 +906,17 @@ window.__ModuleLoader__.load({
         }
       }
       maxAbs = maxAbs || 1;
+      const maxT = Math.max(Math.abs(raceTransform(maxAbs, scaleMode)), 1e-9);
 
       const W = 1000;
       const H = 460;
-      const pad = { left: 70, right: 96, top: 18, bottom: 30 };
+      const pad = { left: 70, right: 132, top: 18, bottom: 30 };
       const plotW = W - pad.left - pad.right;
       const plotH = H - pad.top - pad.bottom;
       const zeroY = pad.top + plotH / 2;
       const xAt = (i) => pad.left + (count <= 1 ? 0 : (i / (count - 1)) * plotW);
-      const yAt = (value) => zeroY - (value / maxAbs) * (plotH / 2);
-      const tickValues = [maxAbs, maxAbs / 2, 0, -maxAbs / 2, -maxAbs];
-      const yTickLabels = [maxAbs, maxAbs / 2, 0, -maxAbs / 2, -maxAbs];
+      const yAt = (value) => zeroY - (raceTransform(value, scaleMode) / maxT) * (plotH / 2);
+      const ticks = raceTicks(maxAbs, scaleMode);
 
       const paths = series.map((item) => {
         let d = '';
@@ -912,7 +935,24 @@ window.__ModuleLoader__.load({
         );
       });
 
-      const currentRows = series
+      // 线尾标注板块名：按当前值排序，位置太近的跳过，避免重叠成一团
+      const endLabels = [];
+      {
+        const used = [];
+        const candidates = series
+          .map((item) => ({ name: item.sector_name, color: item.color, value: item.values[frame] }))
+          .filter((item) => item.value !== null && item.value !== undefined)
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 16);
+        for (const item of candidates) {
+          const y = yAt(item.value);
+          if (used.some((prev) => Math.abs(prev - y) < 12)) continue;
+          used.push(y);
+          endLabels.push({ ...item, y });
+        }
+      }
+
+      const legendRows = series
         .map((item) => ({ ...item, value: item.values[frame] }))
         .filter((item) => item.value !== null && item.value !== undefined)
         .sort((a, b) => b.value - a.value);
@@ -929,6 +969,8 @@ window.__ModuleLoader__.load({
             RACE_FIELDS.map(([value, label]) => h('option', { key: value, value }, label))),
           h('select', { className: 'iv-select', value: String(top), onChange: (e) => setTop(Number(e.target.value)) },
             [10, 15, 20, 30].map((n) => h('option', { key: n, value: String(n) }, `前 ${n}`))),
+          h('select', { className: 'iv-select', value: scaleMode, onChange: (e) => setScaleMode(e.target.value) },
+            [['log', '对数刻度'], ['linear', '线性刻度']].map(([value, label]) => h('option', { key: value, value }, label))),
           h('select', { className: 'iv-select', value: String(speed), onChange: (e) => setSpeed(Number(e.target.value)) },
             [200, 100, 50, 25].map((ms) => h('option', { key: ms, value: String(ms) }, `${200 / ms}x`))),
           h('button', {
@@ -958,8 +1000,7 @@ window.__ModuleLoader__.load({
         h(
           'svg',
           { viewBox: `0 0 ${W} ${H}`, style: { width: '100%', height: 'auto', display: 'block' }, role: 'img' },
-          // 网格与坐标
-          tickValues.map((value, i) => h('g', { key: i },
+          ticks.map((value, i) => h('g', { key: 'tick' + i },
             h('line', {
               x1: pad.left, x2: pad.left + plotW, y1: yAt(value), y2: yAt(value),
               stroke: value === 0 ? 'var(--dsw-border-default,#c9ccd2)' : 'var(--dsw-border-subtle,#eceef2)',
@@ -968,33 +1009,40 @@ window.__ModuleLoader__.load({
             h('text', {
               x: pad.left - 8, y: yAt(value) + 3, textAnchor: 'end', fontSize: 10,
               fill: 'var(--dsw-text-tertiary,#8a9099)',
-            }, (yTickLabels[i] / 1e8).toFixed(0) + '亿'),
+            }, raceTickLabel(value)),
           )),
-          // 时间刻度
           [0, Math.floor(count / 4), Math.floor(count / 2), Math.floor((count * 3) / 4), count - 1]
             .filter((v, i, arr) => arr.indexOf(v) === i)
             .map((i) => h('text', {
               key: 'x' + i, x: xAt(i), y: H - 8, textAnchor: 'middle', fontSize: 10,
               fill: 'var(--dsw-text-tertiary,#8a9099)',
             }, data.times[i])),
-          // 当前时间游标
           h('line', {
             x1: xAt(frame), x2: xAt(frame), y1: pad.top, y2: pad.top + plotH,
             stroke: 'var(--dsw-text-tertiary,#8a9099)', strokeWidth: 1, strokeDasharray: '3 3',
           }),
           paths,
+          endLabels.map((item) => h('text', {
+            key: 'label' + item.name,
+            x: pad.left + plotW + 8,
+            y: item.y + 3.5,
+            fill: item.color,
+            fontSize: 10.5,
+          }, item.name)),
         ),
         h(
           'div',
           { className: 'iv-race-legend' },
-          currentRows.slice(0, 12).map((item) => h('span', { key: item.sector_code, className: 'iv-race-legend-item' },
+          legendRows.map((item) => h('span', { key: item.sector_code, className: 'iv-race-legend-item' },
             h('i', { style: { background: item.color } }),
             h('span', {}, item.sector_name),
             h('b', { className: toneOf(item.value) }, (item.value / 1e8).toFixed(1) + '亿'),
           )),
         ),
         h('div', { className: 'iv-muted', style: { fontSize: 11 } },
-          `每根线是一个板块的当日累计净流入：零轴上方为净流入、下方为净流出；共 ${series.length} 个板块。数据：东方财富（延迟行情）。`),
+          `每根线是一个板块的当日累计净流入：零轴上方为净流入、下方为净流出；共 ${series.length} 个板块。`,
+          scaleMode === 'log' ? '纵轴为对数刻度（以 1 亿为基准的对称 log），压缩量级差异。' : '纵轴为线性刻度。',
+          '数据：东方财富（延迟行情）。'),
       );
     }
 
