@@ -87,6 +87,11 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("INVEST_MX_API_KEY", "MX_API_KEY"),
     )
+    # 易方达指数直通车（指数 / ETF / 场外指数基金）。
+    indexhub_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("INVEST_INDEXHUB_API_KEY", "INDEX_HUB_API_KEY"),
+    )
     # 历史行情的源优先级（从高到低，逗号分隔）。
     provider_priority: str = "akshare,eastmoney,tushare,wind,iwencai"
     # 外部能力（Wind/iFinD/问财）的响应缓存，减少额度消耗。
@@ -96,6 +101,7 @@ class Settings(BaseSettings):
     iwencai_daily_limit: int = Field(default=0, ge=0)
     yingmi_daily_limit: int = Field(default=0, ge=0)
     mx_daily_limit: int = Field(default=0, ge=0)
+    indexhub_daily_limit: int = Field(default=0, ge=0)
     ifind_daily_limit: int = Field(default=0, ge=0)
 
     model_config = SettingsConfigDict(

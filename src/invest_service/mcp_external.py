@@ -17,6 +17,7 @@ from sqlalchemy.orm import sessionmaker
 
 from .config import get_settings
 from .providers.ifind_mcp import IfindMcpClient
+from .providers.indexhub import IndexHubClient
 from .providers.iwencai import IwencaiProvider
 from .providers.miaoxiang import MxMcpClient
 from .providers.wind_skills import (
@@ -40,6 +41,7 @@ YINGMI_FUND_TTL = timedelta(hours=6)
 YINGMI_NEWS_TTL = timedelta(hours=3)
 MX_DATA_TTL = timedelta(hours=6)
 MX_NEWS_TTL = timedelta(hours=3)
+INDEXHUB_TTL = timedelta(hours=6)
 
 # 妙想的 11 个工具都只收自然语言 query，用 domain 收口成一个入口。
 MX_DOMAINS = {
@@ -110,6 +112,47 @@ def _yingmi_call(session, tool: str, arguments: dict, ttl: timedelta, refresh: b
         enabled=settings.external_cache_enabled and not refresh,
     )
     return {**payload, "cached": hit}
+
+
+def _require_indexhub_key() -> str:
+    key = get_settings().indexhub_api_key
+    if not key:
+        raise WindSkillError("INVEST_INDEXHUB_API_KEY 未配置，无法调用指数直通车")
+    return key
+
+
+def _indexhub_call(
+    session,
+    method: str,
+    path: str,
+    payload: dict[str, Any],
+    ttl: timedelta,
+    refresh: bool,
+):
+    settings = get_settings()
+    key = _require_indexhub_key()
+    cache = ExternalCacheService(session)
+
+    def fetch() -> dict[str, Any]:
+        client = IndexHubClient(key)
+
+        def request() -> dict[str, Any]:
+            if method == "GET":
+                return client.get(path, payload)
+            return client.post(path, payload)
+
+        data = _metered(session, "indexhub", settings.indexhub_daily_limit, request)
+        return {"path": path, "data": data}
+
+    cached, hit = cache.get_or_fetch(
+        "indexhub",
+        path,
+        {"method": method, "payload": payload},
+        ttl,
+        fetch,
+        enabled=settings.external_cache_enabled and not refresh,
+    )
+    return {**cached, "cached": hit}
 
 
 def _require_mx_key() -> str:
@@ -566,6 +609,115 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
         ttl = MX_NEWS_TTL if domain in {"news", "notice"} else MX_DATA_TTL
         with session_factory() as session:
             return _mx_call(session, tool, query, ttl, refresh)
+
+    @mcp.tool()
+    def indexhub_etf_search(keyword: str, page_size: int = 10, refresh: bool = False) -> dict:
+        """Search ETFs (全市场) by name/code/theme via 指数直通车.
+
+        Each hit carries scale, multi-period returns, valuation with 5Y
+        percentiles, tracking index and manager. Cached 6h.
+        """
+        with session_factory() as session:
+            return _indexhub_call(
+                session,
+                "POST",
+                "/skill/v1/search/etf",
+                {"keyword": keyword, "page": 1, "pageSize": min(page_size, 100)},
+                INDEXHUB_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def indexhub_etf_detail(fund_codes: list[str], refresh: bool = False) -> dict:
+        """ETF profile: scale, fees, tracking index, manager, tracking error (指数直通车)."""
+        with session_factory() as session:
+            return _indexhub_call(
+                session,
+                "GET",
+                "/skill/v3/etf/detail",
+                {"fundCodes": ",".join(fund_codes)},
+                INDEXHUB_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def indexhub_etf_holdings(fund_codes: list[str], refresh: bool = False) -> dict:
+        """Top-10 holdings and weights for ETFs (指数直通车)."""
+        with session_factory() as session:
+            return _indexhub_call(
+                session,
+                "POST",
+                "/skill/v1/etf/holdings",
+                {"fundCodes": fund_codes},
+                INDEXHUB_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def indexhub_etf_dividends(fund_codes: list[str], refresh: bool = False) -> dict:
+        """Historical dividend records for ETFs (指数直通车)."""
+        with session_factory() as session:
+            return _indexhub_call(
+                session,
+                "POST",
+                "/skill/v1/etf/dividends",
+                {"fundCodes": fund_codes},
+                INDEXHUB_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def indexhub_etf_by_stock(
+        stock_codes: list[str],
+        include_full_match: bool = True,
+        page_size: int = 20,
+        refresh: bool = False,
+    ) -> dict:
+        """Find ETFs holding given stocks (指数直通车).
+
+        ``include_full_match=True`` keeps only ETFs holding every input stock;
+        False returns ETFs holding any of them.
+        """
+        with session_factory() as session:
+            return _indexhub_call(
+                session,
+                "POST",
+                "/skill/v1/search/etf-by-stock",
+                {
+                    "stockCodes": stock_codes,
+                    "onlyIncludeFullMatch": "Y" if include_full_match else "N",
+                    "pageNum": 1,
+                    "pageSize": min(page_size, 100),
+                },
+                INDEXHUB_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def indexhub_index_detail(index_codes: list[str], refresh: bool = False) -> dict:
+        """Index profile: classification, risk/return, industry and size mix (指数直通车)."""
+        with session_factory() as session:
+            return _indexhub_call(
+                session,
+                "GET",
+                "/skill/v3/index/detail",
+                {"indexCodes": ",".join(index_codes)},
+                INDEXHUB_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def indexhub_index_valuation(index_codes: list[str], refresh: bool = False) -> dict:
+        """Index PE/PB/PS with 1Y/2Y/3Y/5Y/10Y percentiles (指数直通车)."""
+        with session_factory() as session:
+            return _indexhub_call(
+                session,
+                "GET",
+                "/skill/v3/index/valuation",
+                {"indexCodes": ",".join(index_codes)},
+                INDEXHUB_TTL,
+                refresh,
+            )
 
     @mcp.tool()
     def list_skill_runs(limit: int = 20, source: str | None = None) -> list[dict]:
