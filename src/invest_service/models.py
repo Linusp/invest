@@ -331,6 +331,34 @@ class MarketBar(Base):
     asset: Mapped[Asset] = relationship(back_populates="history")
 
 
+class SectorFlowPoint(Base):
+    """Intraday (1-minute) cumulative net-flow point for one EastMoney board.
+
+    EastMoney returns the whole day's series per request, so each refresh
+    overwrites the same (sector_code, ts) rows instead of piling up.
+    """
+
+    __tablename__ = "sector_flow_points"
+    __table_args__ = (
+        UniqueConstraint("sector_code", "ts", name="uq_sector_flow_point"),
+        Index("ix_sector_flow_point_ts", "ts"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sector_code: Mapped[str] = mapped_column(String(16), index=True)
+    sector_name: Mapped[str] = mapped_column(String(128))
+    ts: Mapped[datetime] = mapped_column(DateTime())
+    main_net: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    super_large_net: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    large_net: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    mid_net: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    small_net: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    source: Mapped[str] = mapped_column(String(32), default="eastmoney")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class QuoteSnapshot(Base):
     """iFinD real-time quote snapshot per asset.
 

@@ -73,6 +73,43 @@
     <div id="sector-flow-caption" class="muted table-caption"></div>
 </section>
 
+
+<section class="panel" id="sector-race-panel" style="scroll-margin-top:96px">
+    <div class="panel-header">
+        <h2 class="panel-title">盘中资金流动画</h2>
+        <div class="actions">
+            <label class="field"><span class="label">交易日</span><select id="sfr-date" class="input"></select></label>
+            <label class="field"><span class="label">指标</span><select id="sfr-field" class="input">
+                <option value="main_net">主力净流入</option>
+                <option value="super_large_net">超大单净流入</option>
+                <option value="large_net">大单净流入</option>
+                <option value="mid_net">中单净流入</option>
+                <option value="small_net">小单净流入</option>
+            </select></label>
+            <label class="field"><span class="label">板块数</span><select id="sfr-top" class="input">
+                <option value="10">10</option><option value="15">15</option>
+                <option value="20" selected>20</option><option value="30">30</option>
+            </select></label>
+            <label class="field"><span class="label">速度</span><select id="sfr-speed" class="input">
+                <option value="200">0.5x</option><option value="100">1x</option>
+                <option value="50" selected>2x</option><option value="25">4x</option>
+            </select></label>
+            <button id="sfr-play" class="button primary" type="button"><i data-lucide="play"></i><span>播放</span></button>
+            <button id="sfr-reset" class="button" type="button">回到开盘</button>
+        </div>
+    </div>
+    <div id="sfr-chart" class="chart sf-chart" style="height:520px"></div>
+    <div style="display:flex;gap:12px;align-items:center;margin-top:8px">
+        <strong id="sfr-time" class="mono" style="min-width:52px">--:--</strong>
+        <input id="sfr-progress" type="range" min="0" max="0" value="0" step="1" style="flex:1">
+        <span id="sfr-frame" class="muted" style="min-width:90px;text-align:right"></span>
+    </div>
+    <div class="muted table-caption">
+        数据：东方财富板块资金流（延迟行情），每根柱子是「当日累计净流入」；红色为净流入、绿色为净流出，单位人民币。
+        只在交易时段采集，每天保留收盘时点结果。
+    </div>
+</section>
+
 <dialog id="scope-dialog">
     <form id="scope-form">
         <div class="dialog-header"><h2 id="scope-dialog-title">新增分析对象</h2><button class="icon-button" type="button" data-close="scope-dialog" aria-label="关闭"><i data-lucide="x"></i></button></div>
@@ -280,8 +317,142 @@
             loadSectorFlow().catch(error => showToast(error.message, "error"))
         )
     );
+
+    // ---- 盘中资金流动画 ----
+    const race = {data: null, index: 0, timer: null, playing: false, chart: null};
+
+    function raceChart() {
+        if (!race.chart) race.chart = echarts.init($("sfr-chart"));
+        return race.chart;
+    }
+
+    function raceTop() { return Number($("sfr-top").value || 20); }
+
+    function renderRaceFrame() {
+        const data = race.data;
+        if (!data || !data.times.length) {
+            raceChart().clear();
+            $("sfr-time").textContent = "--:--";
+            $("sfr-frame").textContent = "";
+            return;
+        }
+        const frame = Math.min(Math.max(race.index, 0), data.times.length - 1);
+        race.index = frame;
+        const rows = data.series
+            .map(item => ({name: item.sector_name, value: item.values[frame]}))
+            .filter(item => item.value !== null && item.value !== undefined)
+            .sort((a, b) => b.value - a.value)
+            .slice(0, raceTop());
+
+        raceChart().setOption({
+            grid: {left: 96, right: 90, top: 8, bottom: 24},
+            xAxis: {
+                type: "value",
+                axisLabel: {formatter: value => (value / 1e8).toFixed(0) + "亿"},
+                splitLine: {lineStyle: {color: "#eef0f3"}},
+            },
+            yAxis: {
+                type: "category",
+                inverse: true,
+                data: rows.map(item => item.name),
+                axisLabel: {fontSize: 11},
+                axisTick: {show: false},
+            },
+            series: [{
+                type: "bar",
+                barMaxWidth: 16,
+                data: rows.map(item => ({
+                    value: item.value,
+                    itemStyle: {color: item.value >= 0 ? "#b53a3a" : "#198754", borderRadius: 2},
+                    label: {
+                        show: true,
+                        position: item.value >= 0 ? "right" : "left",
+                        formatter: () => (item.value / 1e8).toFixed(1) + "亿",
+                        fontSize: 10,
+                        color: "#5a6270",
+                    },
+                })),
+            }],
+            animationDurationUpdate: 120,
+            animationEasingUpdate: "linear",
+        }, true);
+
+        $("sfr-time").textContent = data.times[frame];
+        $("sfr-frame").textContent = `${frame + 1} / ${data.times.length}`;
+        $("sfr-progress").max = data.times.length - 1;
+        $("sfr-progress").value = frame;
+    }
+
+    function stopRace() {
+        race.playing = false;
+        if (race.timer) { clearInterval(race.timer); race.timer = null; }
+        const button = $("sfr-play");
+        button.innerHTML = '<i data-lucide="play"></i><span>播放</span>';
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function startRace() {
+        if (!race.data || !race.data.times.length) return;
+        if (race.index >= race.data.times.length - 1) race.index = 0;
+        stopRace();
+        race.playing = true;
+        const button = $("sfr-play");
+        button.innerHTML = '<i data-lucide="pause"></i><span>暂停</span>';
+        if (window.lucide) lucide.createIcons();
+        const interval = Number($("sfr-speed").value || 50);
+        race.timer = setInterval(() => {
+            if (race.index >= race.data.times.length - 1) { stopRace(); return; }
+            race.index += 1;
+            renderRaceFrame();
+        }, interval);
+    }
+
+    async function loadRaceDates() {
+        const data = await api("/sector-capital-flows/intraday/dates");
+        const select = $("sfr-date");
+        const dates = data.dates || [];
+        select.innerHTML = dates.length
+            ? dates.map(date => `<option value="${date}">${date}</option>`).join("")
+            : '<option value="">无盘中数据</option>';
+    }
+
+    async function loadRace(autoPlay) {
+        const params = new URLSearchParams({
+            top: String(raceTop()),
+            field: $("sfr-field").value,
+        });
+        if ($("sfr-date").value) params.set("trade_date", $("sfr-date").value);
+        const data = await api("/sector-capital-flows/intraday?" + params);
+        race.data = data;
+        race.index = 0;
+        renderRaceFrame();
+        if (autoPlay && data.times && data.times.length) startRace();
+    }
+
+    function initRace() {
+        $("sfr-play").addEventListener("click", () => race.playing ? stopRace() : startRace());
+        $("sfr-reset").addEventListener("click", () => { stopRace(); race.index = 0; renderRaceFrame(); });
+        $("sfr-progress").addEventListener("input", event => {
+            stopRace();
+            race.index = Number(event.target.value);
+            renderRaceFrame();
+        });
+        ["sfr-date", "sfr-field", "sfr-top"].forEach(id =>
+            $(id).addEventListener("change", () => {
+                stopRace();
+                loadRace(false).then(loadRaceDates).catch(error => showToast(error.message, "error"));
+            })
+        );
+        $("sfr-speed").addEventListener("change", () => { if (race.playing) startRace(); });
+        window.addEventListener("resize", () => race.chart?.resize());
+        loadRaceDates()
+            .then(() => loadRace(true))
+            .catch(error => showToast(error.message, "error"));
+    }
+
     window.addEventListener("resize", () => state.chart?.resize());
     loadSectorFlow().catch(error => showToast(error.message, "error"));
+    initRace();
 })();
 </script>
 {% endblock %}

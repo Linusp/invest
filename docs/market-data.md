@@ -71,6 +71,21 @@ akshare,eastmoney,tushare,wind,iwencai
 默认 30）写入 `market_scopes`，挂到 `SECTOR_FLOW_SYNC_SCOPES_PARENT`（默认 `em_industry`）之下，
 使点评可以按板块对象沉淀。该同步**只新建缺失对象，不删除也不覆盖**已有 scope。
 
+### 盘中资金流序列（动画用）
+
+除了日频快照，invest 还按分钟采集板块的**累计净流入**，用于回放开盘到收盘的资金流向变化：
+
+- 数据源：`push2delay.eastmoney.com/api/qt/stock/fflow/kline/get`（`klt=1`），一次请求返回
+  当日 240 个时点（09:31–15:00），字段为主力/小/中/大/超大单累计净流入；
+- 存储：`sector_flow_points`，按 `(sector_code, ts)` 唯一，每次刷新覆盖写；
+- 调度：`SECTOR_FLOW_INTRADAY_MINUTES`（默认 5，0 关闭）在交易时段内运行
+  `invest.update_sector_flow_points`，只跟踪市值前 `SECTOR_FLOW_INTRADAY_TOP`（默认 30）个板块；
+- 接口：`GET /api/v1/sector-capital-flows/intraday?trade_date=&top=&field=`
+  返回对齐好的 `times` 与 `series`；`GET .../intraday/dates` 列出有数据的交易日；
+- 页面：`/analysis` 的「盘中资金流动画」用 ECharts 柱状图逐帧回放，可切换交易日、
+  指标、板块数与速度；
+- 日频收盘结果不受影响，仍写入 `sector_capital_flows`。
+
 东方财富的行业口径是细粒度 BK 板块池（如「银行」「银行Ⅱ」「国有大型银行Ⅲ」并存），
 并非官方标准行业分类，引用时注意区分。
 

@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     sector_flow_sync_scopes_enabled: bool = True
     sector_flow_sync_scopes_top: int = Field(default=30, ge=1, le=200)
     sector_flow_sync_scopes_parent: str | None = "em_industry"
+    # 盘中资金流：每隔多少分钟抓一次（0 = 关闭），以及跟踪的板块数。
+    sector_flow_intraday_minutes: int = Field(default=5, ge=0)
+    sector_flow_intraday_top: int = Field(default=30, ge=1, le=100)
 
     # iFinD MCP real-time quote snapshots. The key may be given inline or via a
     # mounted secret file; the file form keeps it out of .env and compose files.

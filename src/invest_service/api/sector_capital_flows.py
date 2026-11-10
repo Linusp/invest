@@ -21,6 +21,34 @@ ORDER_BY_FIELDS = (
 )
 
 
+INTRADAY_FIELDS = ("main_net", "super_large_net", "large_net", "mid_net", "small_net")
+
+
+@router.get("/intraday")
+def intraday_series(
+    db: DB,
+    trade_date: date | None = Query(default=None, description="交易日，默认取库内最新"),
+    top: int = Query(default=30, ge=1, le=100, description="按收盘时点绝对值取前 N 个板块"),
+    field: str = Query(default="main_net", description="资金流字段"),
+):
+    """Aligned 1-minute series for the board-flow animation."""
+    if field not in INTRADAY_FIELDS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"field must be one of: {', '.join(INTRADAY_FIELDS)}",
+        )
+    return SectorCapitalFlowService(db).intraday_series(trade_date, top=top, field=field)
+
+
+@router.get("/intraday/dates")
+def intraday_dates(
+    db: DB,
+    limit: int = Query(default=10, ge=1, le=60),
+):
+    """Dates that have intraday flow points, newest first."""
+    return {"dates": SectorCapitalFlowService(db).intraday_dates(limit=limit)}
+
+
 @router.get("")
 def list_sector_capital_flows(
     db: DB,

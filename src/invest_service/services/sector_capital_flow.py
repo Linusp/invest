@@ -9,12 +9,13 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import MarketScope, MarketScopeType, SectorCapitalFlow
+from ..models import MarketScope, MarketScopeType, SectorCapitalFlow, SectorFlowPoint
 from ..providers.sector_flow import EastMoneySectorFlow, SectorBoard, SectorFlowError
 
 logger = logging.getLogger(__name__)
 
 INTERVAL_DAILY = "1d"
+INTERVAL_INTRADAY = "1m"
 
 
 class SectorFlowNotFound(LookupError):
@@ -113,6 +114,152 @@ class SectorCapitalFlowService:
             "updated": updated,
             "scopes_synced": synced,
         }
+
+    def refresh_intraday(
+        self,
+        provider: EastMoneySectorFlow | None = None,
+        top: int = 30,
+    ) -> dict[str, int]:
+        """Collect today's 1-minute cumulative flows for the biggest boards."""
+        provider = provider or EastMoneySectorFlow()
+        boards = sorted(provider.industry_boards(), key=lambda b: b.market_cap, reverse=True)[
+            :top
+        ]
+
+        incoming: dict[tuple[str, object], dict] = {}
+        for board in boards:
+            try:
+                points = provider.intraday_flows(board.code)
+            except SectorFlowError as exc:
+                logger.warning(
+                    "[sector-flow] intraday skip %s(%s): %s", board.name, board.code, exc
+                )
+                continue
+            for point in points:
+                incoming[(board.code, point["ts"])] = {
+                    "sector_code": board.code,
+                    "sector_name": board.name,
+                    "ts": point["ts"],
+                    "main_net": _dec(point["main_net"]),
+                    "super_large_net": _dec(point["super_large_net"]),
+                    "large_net": _dec(point["large_net"]),
+                    "mid_net": _dec(point["mid_net"]),
+                    "small_net": _dec(point["small_net"]),
+                    "source": "eastmoney",
+                }
+
+        existing = {
+            (row.sector_code, row.ts): row
+            for row in self.session.scalars(
+                select(SectorFlowPoint).where(
+                    SectorFlowPoint.sector_code.in_([b.code for b in boards])
+                )
+            )
+        }
+        created = 0
+        updated = 0
+        for key, values in incoming.items():
+            row = existing.get(key)
+            if row is None:
+                self.session.add(SectorFlowPoint(**values))
+                created += 1
+                continue
+            changed = False
+            for field, value in values.items():
+                if field in ("sector_code", "ts"):
+                    continue
+                if getattr(row, field) != value:
+                    setattr(row, field, value)
+                    changed = True
+            if changed:
+                updated += 1
+        self.session.commit()
+        logger.info(
+            "[sector-flow] intraday refresh: %d boards, %d points, %d new, %d updated",
+            len(boards),
+            len(incoming),
+            created,
+            updated,
+        )
+        return {
+            "boards": len(boards),
+            "points": len(incoming),
+            "created": created,
+            "updated": updated,
+        }
+
+    def intraday_series(
+        self,
+        trade_date: date | None = None,
+        top: int = 30,
+        field: str = "main_net",
+    ) -> dict:
+        """Return an aligned time-series matrix for the animation.
+
+        Shape: ``{"trade_date", "field", "times": ["09:31", ...],
+        "series": [{"sector_code", "sector_name", "values": [...]}]}``.
+        """
+        if trade_date is None:
+            trade_date = self.session.scalar(
+                select(func.max(func.date(SectorFlowPoint.ts)))
+            )
+            if trade_date is None:
+                return {"trade_date": None, "field": field, "times": [], "series": []}
+        if isinstance(trade_date, str):
+            trade_date = date.fromisoformat(trade_date)
+
+        rows = list(
+            self.session.scalars(
+                select(SectorFlowPoint)
+                .where(func.date(SectorFlowPoint.ts) == trade_date.isoformat())
+                .order_by(SectorFlowPoint.ts)
+            )
+        )
+        if not rows:
+            return {
+                "trade_date": trade_date,
+                "field": field,
+                "times": [],
+                "series": [],
+            }
+
+        times = sorted({row.ts for row in rows})
+        time_index = {ts: idx for idx, ts in enumerate(times)}
+        by_code: dict[str, dict] = {}
+        for row in rows:
+            entry = by_code.setdefault(
+                row.sector_code,
+                {
+                    "sector_code": row.sector_code,
+                    "sector_name": row.sector_name,
+                    "values": [None] * len(times),
+                },
+            )
+            value = getattr(row, field, None)
+            entry["values"][time_index[row.ts]] = float(value) if value is not None else None
+
+        def last_value(entry: dict) -> float:
+            for value in reversed(entry["values"]):
+                if value is not None:
+                    return abs(value)
+            return 0.0
+
+        ranked = sorted(by_code.values(), key=last_value, reverse=True)[:top]
+        return {
+            "trade_date": trade_date,
+            "field": field,
+            "times": [ts.strftime("%H:%M") for ts in times],
+            "series": ranked,
+        }
+
+    def intraday_dates(self, limit: int = 10) -> list[str]:
+        rows = self.session.scalars(
+            select(func.date(SectorFlowPoint.ts))
+            .group_by(func.date(SectorFlowPoint.ts))
+            .order_by(func.date(SectorFlowPoint.ts).desc())
+            .limit(limit)
+        )
+        return [str(row) for row in rows]
 
     def sync_tracked_scopes(
         self,

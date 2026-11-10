@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import httpx
@@ -35,6 +35,10 @@ SECTOR_LIST_FALLBACK_URL = "https://push2.eastmoney.com/api/qt/clist/get"
 SECTOR_DAILY_FLOW_URL = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
 SECTOR_DAILY_FLOW_FALLBACK_URL = (
     "https://push2delay.eastmoney.com/api/qt/stock/fflow/daykline/get"
+)
+SECTOR_INTRADAY_FLOW_URL = "https://push2delay.eastmoney.com/api/qt/stock/fflow/kline/get"
+SECTOR_INTRADAY_FLOW_FALLBACK_URL = (
+    "https://push2his.eastmoney.com/api/qt/stock/fflow/kline/get"
 )
 
 REQUEST_TIMEOUT = 12.0
@@ -228,6 +232,54 @@ class EastMoneySectorFlow:
         if not flows:
             raise SectorFlowError(f"EastMoney returned no daily flows for {code}")
         return flows
+
+    def intraday_flows(self, code: str) -> list[dict[str, Any]]:
+        """Fetch today's 1-minute cumulative net-flow series for one BK board.
+
+        EastMoney returns the whole session in one request (240 points), so a
+        periodic refresh simply overwrites the same timestamps.
+        """
+        code = code.strip().upper()
+        if not code or len(code) > 16:
+            raise SectorFlowError(f"invalid sector code: {code!r}")
+        payload = _get(
+            self.client,
+            SECTOR_INTRADAY_FLOW_URL,
+            SECTOR_INTRADAY_FLOW_FALLBACK_URL,
+            {
+                "lmt": "0",
+                "klt": "1",
+                "secid": f"90.{code}",
+                "fields1": "f1,f2,f3,f7",
+                "fields2": DAILY_FLOW_FIELDS,
+                "_": str(int(time.time() * 1000)),
+            },
+        )
+        data = payload.get("data") or {}
+        points: list[dict[str, Any]] = []
+        for kline in data.get("klines") or []:
+            if not isinstance(kline, str):
+                continue
+            parts = kline.split(",")
+            if len(parts) < 6 or not parts[0]:
+                continue
+            try:
+                ts = datetime.strptime(parts[0], "%Y-%m-%d %H:%M")
+            except ValueError:
+                continue
+            points.append(
+                {
+                    "ts": ts,
+                    "main_net": _number(parts[1]),
+                    "small_net": _number(parts[2]),
+                    "mid_net": _number(parts[3]),
+                    "large_net": _number(parts[4]),
+                    "super_large_net": _number(parts[5]),
+                }
+            )
+        if not points:
+            raise SectorFlowError(f"EastMoney returned no intraday flows for {code}")
+        return points
 
     def refresh_snapshot(self, days: int = 30) -> list[dict[str, Any]]:
         """Convenience: boards plus their daily flows, ready for persistence.

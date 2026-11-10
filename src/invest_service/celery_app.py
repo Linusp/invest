@@ -95,6 +95,14 @@ def build_beat_schedule(settings: Settings) -> dict[str, dict[str, Any]]:
                 "schedule": refresh_seconds,
                 "options": {"expires": refresh_seconds},
             }
+        # 1-minute board flow series used by the animation.
+        if settings.sector_flow_intraday_minutes > 0:
+            flow_seconds = settings.sector_flow_intraday_minutes * 60
+            schedule["update-sector-flow-points"] = {
+                "task": "invest.update_sector_flow_points",
+                "schedule": flow_seconds,
+                "options": {"expires": flow_seconds},
+            }
     # 每天探测一次被余额熔断的 provider，恢复了就自动放行。
     schedule["recover-provider-states"] = {
         "task": "invest.recover_provider_states",
@@ -371,6 +379,38 @@ def update_sector_capital_flow() -> dict[str, Any]:
     if not current_settings.sector_flow_enabled:
         return {"disabled": True}
     return run_sector_capital_flow_update(SessionLocal, current_settings)
+
+
+def run_sector_flow_points_update(
+    session_factory: sessionmaker,
+    settings: Settings,
+) -> dict[str, Any]:
+    with session_factory() as session:
+        result = SectorCapitalFlowService(session).refresh_intraday(
+            top=settings.sector_flow_intraday_top
+        )
+    logger.info("[sector-flow] intraday points: %s", result)
+    return result
+
+
+@celery_app.task(
+    name="invest.update_sector_flow_points",
+    autoretry_for=(ProviderError,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=2,
+    soft_time_limit=120,
+    time_limit=180,
+)
+def update_sector_flow_points() -> dict[str, Any]:
+    current_settings = get_settings()
+    if not current_settings.sector_flow_enabled:
+        return {"disabled": True}
+    if current_settings.sector_flow_intraday_minutes <= 0:
+        return {"disabled": "intraday disabled"}
+    if not _in_trading_window():
+        return {"skipped": "outside trading hours"}
+    return run_sector_flow_points_update(SessionLocal, current_settings)
 
 
 def _in_trading_window(moment: datetime | None = None) -> bool:
