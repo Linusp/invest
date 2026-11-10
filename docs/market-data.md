@@ -153,3 +153,18 @@ akshare,eastmoney,tushare,wind,iwencai
   `provider_reset` 手动解除。
 - 自动恢复任务 `invest.recover_provider_states` 每天 09:10 对 `credit` 状态做一次
   轻量 MCP initialize 探测（不消耗业务额度），成功即放行。
+
+## 场外基金
+
+场外基金是与股票/ETF/指数并列的资产类别（`AssetCategory.FUND`），用于构建包含
+开放式基金的组合。
+
+- **标的代码**：`{6位代码}.OF`，例如 `005827.OF`；登记时 `category` 传 `fund`。
+- **数据源**：AkShare
+  - `fund_name_em`：全市场约 2.8 万只基金的目录，进入本地搜索索引，可按名称/代码检索；
+  - `fund_open_fund_info_em`：单只基金的单位净值走势，写入 `market_bars`
+    （`close` = 单位净值，`change_percent` 直接取「日增长率」，无 OHLC/成交量）。
+- **Provider 链**：`akshare-fund → wind(可选)`；AkShare 调用仍走子进程白名单与超时保护。
+- **估值**：组合持仓按最新净值估值，`latest_price_date` 即净值日期。
+- **限制**：场外基金没有盘中价格、成交量和 K 线形态；图表只画净值曲线。
+  申购/赎回费用请记在交易的 `fee` 字段。

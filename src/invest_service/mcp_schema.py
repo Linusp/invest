@@ -15,10 +15,13 @@ from typing import Any
 # 工具名 → (一句话功能, 返回说明)
 TOOL_DOCS: dict[str, tuple[str, str]] = {
     # ---------- 资产与自选 ----------
-    "register_asset": ("登记一个股票/ETF/指数标的（记录交易或拉行情前必须先登记）", "标的档案"),
+    "register_asset": (
+        "登记一个股票/ETF/指数/场外基金标的（记录交易或拉行情前必须先登记）",
+        "标的档案",
+    ),
     "get_asset": ("按代码取单个标的，代码有歧义时同时传 category", "标的档案"),
-    "list_assets": ("列出已登记的自选标的，可按分类过滤", "标的数组"),
-    "search_assets": ("在本地索引里模糊搜索标的（代码/名称/拼音）", "匹配标的数组"),
+    "list_assets": ("列出已登记的自选标的，可按分类过滤（含场外基金）", "标的数组"),
+    "search_assets": ("在本地索引里模糊搜索标的（代码/名称/拼音，含场外基金）", "匹配标的数组"),
     "set_asset_favorite": ("把标的加入或移出自选", "更新后的标的"),
     "refresh_asset_market_data": ("立即排队刷新单只标的的行情", "任务受理结果"),
     "get_market_history": ("读取本地已落库的日线 OHLCV，按日期升序", "K 线数组"),
@@ -136,8 +139,8 @@ PARAM_DOCS: dict[str, str] = {
     "code": "标的代码（6 位）",
     "stock_code": "标的代码，如 600519.SH",
     "asset_symbol": "标的代码，如 600519.SH",
-    "category": "标的分类：stock / etf / index",
-    "asset_category": "标的分类：stock / etf / index",
+    "category": "标的分类：stock / etf / index / fund（场外基金）",
+    "asset_category": "标的分类：stock / etf / index / fund",
     "fund_codes": "基金/ETF 代码数组，如 [\"005827\"]",
     "start_date": "起始日期 YYYY-MM-DD",
     "end_date": "结束日期 YYYY-MM-DD",
