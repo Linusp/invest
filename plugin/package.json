@@ -1,0 +1,31 @@
+{
+  "name": "dsh-invest",
+  "version": "0.1.0",
+  "private": true,
+  "description": "投资看板：把本地 invest 服务（127.0.0.1:8001）的数据接进 DSH 侧边栏，提供总览、自选行情、组合持仓、板块资金流四个看板。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-connection"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4"
+  }
+}

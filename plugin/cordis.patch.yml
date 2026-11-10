@@ -1,0 +1,9 @@
+# dsh-invest 组合包挂载声明
+# 宿主半侧只做一件事：在同源的 /dsh-invest 下把请求转发给本地 invest 服务，
+# 浏览器半侧因此不需要 CORS，也不需要知道 invest 的真实地址。
+- insert:
+    - id: dsh-invest
+      name: 'dsh-invest'
+      config:
+        baseUrl: 'http://127.0.0.1:8001'
+        prefix: '/dsh-invest'

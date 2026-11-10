@@ -44,6 +44,15 @@ make test
 - [OpenCLI / Agent 外部资讯接入](docs/information.md)
 - [组合、点评与交易计划需求文档（已 Review）](docs/portfolio-commentary-trade-plan-prd.md)
 
+## DSH 插件（`plugin/`）
+
+`plugin/` 是配套的 DeepSeek Harness 客户端插件（独立 npm 包），在 DSH 侧边栏提供
+「投资」面板：总览、自选、组合、板块资金流、资金流回放。
+
+- 与 Python 服务**相互隔离**：不参与 `pyproject.toml`、镜像构建和 pytest；
+- 数据全部经由本服务的 REST 接口（宿主代理 `/dsh-invest/api/v1/*` → `127.0.0.1:8001`）；
+- 安装方式见 [plugin/README.md](plugin/README.md)。
+
 ## 常用命令
 
 ```bash
