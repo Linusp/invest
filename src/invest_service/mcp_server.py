@@ -78,8 +78,11 @@ def build_mcp(
     mcp = FastMCP(
         "invest",
         instructions=(
-            "Query and update stock, ETF and index market data; create and inspect investment "
-            "strategies; add trades and query derived positions."
+            "本地投资数据服务：查询行情与自选、维护组合与交易、管理点评/资讯/交易计划，"
+            "并通过 Wind、iFinD、盈米、妙想、指数直通车、通达信、问财等外部源查询深度数据。\n"
+            "约定：标的身份是 category + symbol（如 stock + 600519.SH）；"
+            "所有写操作只改本地库，不会下单；外部能力受每日额度与熔断保护，"
+            "返回里 cached=true 表示命中缓存未消耗额度。"
         ),
         stateless_http=True,
         json_response=True,
@@ -1091,8 +1094,10 @@ def build_mcp(
         )
 
     from .mcp_external import register_external_tools
+    from .mcp_schema import enrich_mcp
 
     register_external_tools(mcp, session_factory)
+    enrich_mcp(mcp)
     return mcp
 
 
