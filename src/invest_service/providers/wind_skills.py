@@ -45,16 +45,69 @@ ALICE_SKILLS: tuple[AliceSkill, ...] = (
     AliceSkill("事实核验", "Fact Check"),
 )
 
-# Wind 股票域里可用的能力型数据工具。
-DATA_TOOLS = {
-    "get_stock_summary",
-    "get_stock_fundamentals",
-    "get_stock_equity_holders",
-    "get_risk_metrics",
-    "get_stock_events",
-    "get_stock_technicals",
-    "search_stocks",
+# 各 Wind 数据域可用的工具白名单（按 tools/list 实测结果整理）。
+WIND_DOMAIN_TOOLS: dict[str, frozenset[str]] = {
+    "stock": frozenset(
+        {
+            "get_stock_summary",
+            "search_stocks",
+            "get_stock_performance",
+            "get_stock_info",
+            "get_stock_shareholders",
+            "get_stock_financials",
+            "get_risk_indicators",
+            "get_stock_events",
+            "get_esg_data",
+            "stock_highfreq_quotes",
+            "get_stock_kline",
+            "get_stock_quote",
+            "get_stock_price_indicators",
+            "get_stock_basicinfo",
+            "get_stock_technicals",
+            "get_risk_metrics",
+            "get_stock_equity_holders",
+            "get_stock_fundamentals",
+        }
+    ),
+    "fund": frozenset(
+        {
+            "get_fund_price_indicators",
+            "get_fund_kline",
+            "get_fund_financials",
+            "get_fund_holdings",
+            "get_fund_company_info",
+            "get_fund_quote",
+            "get_fund_holders",
+            "get_fund_performance",
+            "search_funds",
+            "get_fund_info",
+        }
+    ),
+    "index": frozenset(
+        {
+            "get_index_technicals",
+            "get_index_quote",
+            "get_index_kline",
+            "get_index_fundamentals",
+            "get_index_price_indicators",
+            "get_index_basicinfo",
+        }
+    ),
+    "bond": frozenset(
+        {
+            "get_bond_basicinfo",
+            "get_bond_issuer_info",
+            "get_bond_market_data",
+            "get_bond_financial_data",
+        }
+    ),
+    "econ": frozenset({"search_economic_indicator", "query_economic_indicator_data"}),
+    "docs": frozenset({"get_company_announcements", "get_financial_news"}),
+    "analytics": frozenset({"get_financial_data"}),
 }
+
+# 兼容旧引用：默认股票域。
+DATA_TOOLS = WIND_DOMAIN_TOOLS["stock"]
 
 
 def resolve_alice_skill(value: str | None) -> AliceSkill | None:
@@ -73,19 +126,35 @@ def resolve_alice_skill(value: str | None) -> AliceSkill | None:
 
 
 class WindDataTools:
-    """调用 Wind 股票域的结构化数据工具。"""
+    """调用 Wind 各数据域的结构化工具。"""
 
     def __init__(self, api_key: str, client: WindMcpClient | None = None):
         self.api_key = api_key
         self._client = client or WindMcpClient(api_key, timeout=90)
 
-    def call(self, tool: str, question: str) -> dict[str, Any]:
-        if tool not in DATA_TOOLS:
-            raise WindSkillError(f"不支持的数据工具: {tool}")
-        if not question.strip():
-            raise WindSkillError("question 不能为空")
-        payload = self._client.call("stock", tool, {"question": question})
-        return {"tool": tool, "question": question, "result": payload}
+    def call(
+        self,
+        tool: str,
+        question: str | dict[str, Any] | None = None,
+        domain: str = "stock",
+    ) -> dict[str, Any]:
+        allowed = WIND_DOMAIN_TOOLS.get(domain)
+        if allowed is None:
+            raise WindSkillError(
+                f"未知的 Wind 数据域: {domain}；可选: {', '.join(WIND_DOMAIN_TOOLS)}"
+            )
+        if tool not in allowed:
+            raise WindSkillError(
+                f"{domain} 域不支持 {tool}；可选: {', '.join(sorted(allowed))}"
+            )
+        if isinstance(question, dict):
+            arguments = question
+        else:
+            if not (question or "").strip():
+                raise WindSkillError("question 不能为空")
+            arguments = {"question": question}
+        payload = self._client.call(domain, tool, arguments)
+        return {"domain": domain, "tool": tool, "arguments": arguments, "result": payload}
 
 
 class WindAliceClient:

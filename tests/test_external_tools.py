@@ -165,3 +165,16 @@ def test_external_rest_endpoints(client):
     response = client.get("/api/v1/external/skill-runs")
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_wind_domain_whitelist():
+    from invest_service.providers.wind_skills import WIND_DOMAIN_TOOLS, WindDataTools
+
+    assert "stock" in WIND_DOMAIN_TOOLS and "bond" in WIND_DOMAIN_TOOLS
+    tools = WindDataTools("k")
+    with pytest.raises(Exception):
+        tools.call("get_bond_basicinfo", "x", "stock")
+    with pytest.raises(Exception):
+        tools.call("nope", "x", "bond")
+    with pytest.raises(Exception):
+        tools.call("get_bond_basicinfo", "  ", "bond")

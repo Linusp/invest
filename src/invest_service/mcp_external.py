@@ -22,7 +22,6 @@ from .providers.iwencai import IwencaiProvider
 from .providers.miaoxiang import MxMcpClient
 from .providers.wind_skills import (
     ALICE_SKILLS,
-    DATA_TOOLS,
     WindAliceClient,
     WindDataTools,
     WindSkillError,
@@ -220,21 +219,35 @@ def _ifind_markdown(payload: dict[str, Any]) -> str:
 
 def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None:
     @mcp.tool()
-    def wind_data(tool: str, question: str, refresh: bool = False) -> dict:
-        """Query Wind's structured data tools with natural language.
+    def wind_data(
+        tool: str,
+        domain: str = "stock",
+        question: str | None = None,
+        arguments: dict | None = None,
+        refresh: bool = False,
+    ) -> dict:
+        """Query Wind data tools across domains.
 
-        ``tool`` must be one of: get_stock_summary, get_stock_fundamentals,
-        get_stock_equity_holders, get_risk_metrics, get_stock_events,
-        get_stock_technicals, search_stocks. ``question`` should name the
-        security and the fields you want (e.g. "贵州茅台 2025年报 ROE 毛利率").
-        Results are cached for 6 hours; pass refresh=True to bypass the cache.
+        ``domain``: stock | fund | index | bond | econ | docs | analytics.
+        Most tools take a natural-language ``question``; structured tools
+        (e.g. get_stock_kline) take their own fields via ``arguments``.
+
+        Examples: domain=stock tool=get_stock_fundamentals question="贵州茅台
+        2025年报 ROE 毛利率"; domain=econ tool=query_economic_indicator_data
+        question="中国 近一年 CPI 同比"; domain=fund tool=get_fund_holdings
+        arguments={"windcode":"510300"}.
+
+        Results are cached 6h per (domain, tool, arguments).
         """
-        if tool not in DATA_TOOLS:
-            raise WindSkillError(
-                f"tool 必须是以下之一: {', '.join(sorted(DATA_TOOLS))}"
-            )
+        if arguments is None and not (question or "").strip():
+            raise WindSkillError("需要提供 question 或 arguments")
         key = _require_wind_key()
-        arguments = {"tool": tool, "question": question}
+        cache_args = {
+            "domain": domain,
+            "tool": tool,
+            "question": question,
+            "arguments": arguments,
+        }
         with session_factory() as session:
             cache = ExternalCacheService(session)
 
@@ -243,13 +256,17 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
                     session,
                     "wind",
                     get_settings().wind_daily_limit,
-                    lambda: WindDataTools(key).call(tool, question),
+                    lambda: WindDataTools(key).call(
+                        tool,
+                        arguments if arguments is not None else question,
+                        domain,
+                    ),
                 )
 
             payload, hit = cache.get_or_fetch(
                 "wind",
-                tool,
-                arguments,
+                f"{domain}.{tool}",
+                cache_args,
                 WIND_DATA_TTL,
                 fetch,
                 enabled=get_settings().external_cache_enabled and not refresh,
