@@ -219,6 +219,10 @@ class IfindMcpClient:
     def _session(self, server: str) -> str:
         return self._sessions.get(server) or self._open(server)
 
+    def ping(self) -> None:
+        """最轻量的 initialize，用于探测服务是否恢复。"""
+        self._open("stock")
+
     def call(self, server: str, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """调用一个工具，返回内层 JSON（``{code, msg, data}``）。"""
         for attempt in (1, 2):

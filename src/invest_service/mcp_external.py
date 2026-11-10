@@ -29,6 +29,7 @@ from .providers.wind_skills import (
 )
 from .providers.yingmi import YingmiMcpClient
 from .services.external_cache import ExternalCacheService, cache_key
+from .services.provider_gate import ProviderGateService, ProviderUnavailable
 from .services.provider_usage import ProviderUsageService
 from .services.skill_runs import SkillRunService
 
@@ -69,13 +70,26 @@ def _require_wind_key() -> str:
 
 
 def _metered(session, provider: str, limit: int, fetch):
-    """先检查当日额度，再执行并记账；缓存命中的路径不会走到这里。"""
+    """熔断检查 → 当日额度 → 执行 → 记账；缓存命中的路径不会走到这里。"""
+    gate = ProviderGateService(session)
+    try:
+        gate.ensure_available(provider)
+    except ProviderUnavailable as exc:
+        raise WindSkillError(str(exc)) from exc
+
     usage = ProviderUsageService(session)
     try:
         usage.ensure_capacity(provider, limit)
     except ValueError as exc:
+        gate.hit_daily_limit(provider, str(exc))
         raise WindSkillError(str(exc)) from exc
-    payload = fetch()
+
+    try:
+        payload = fetch()
+    except Exception as exc:
+        # 余额/积分类错误 → 熔断为 credit，避免继续打。
+        gate.note_error(provider, str(exc))
+        raise
     usage.record(provider)
     return payload
 
@@ -745,6 +759,39 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
                 INDEXHUB_TTL,
                 refresh,
             )
+
+    @mcp.tool()
+    def provider_status() -> list[dict]:
+        """Show each provider's circuit-breaker state and today's call count.
+
+        status: ok | daily (auto-recovers next day) | credit (needs top-up;
+        probe/reset required).
+        """
+        with session_factory() as session:
+            gate = ProviderGateService(session)
+            usage = ProviderUsageService(session)
+            states = {row["provider"]: row for row in gate.status()}
+            providers = ["wind", "ifind", "iwencai", "yingmi", "mx", "indexhub"]
+            result = []
+            for provider in providers:
+                state = states.get(provider, {"status": "ok"})
+                result.append(
+                    {
+                        "provider": provider,
+                        "status": state.get("status", "ok"),
+                        "reason": state.get("reason"),
+                        "disabled_until": state.get("disabled_until"),
+                        "calls_today": usage.count(provider),
+                    }
+                )
+            return result
+
+    @mcp.tool()
+    def provider_reset(provider: str) -> dict:
+        """Clear a provider's circuit breaker (after topping up or fixing a key)."""
+        with session_factory() as session:
+            ProviderGateService(session).reset(provider)
+        return {"provider": provider, "status": "ok"}
 
     @mcp.tool()
     def list_skill_runs(limit: int = 20, source: str | None = None) -> list[dict]:

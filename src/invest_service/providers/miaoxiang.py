@@ -80,6 +80,9 @@ class MxMcpClient:
         )
         self._initialized = True
 
+    def ping(self) -> None:
+        self._ensure_initialized()
+
     def call(self, tool: str, query: str) -> dict[str, Any]:
         """调用一个工具；所有妙想工具都只接受 ``query``。"""
         if not query.strip():

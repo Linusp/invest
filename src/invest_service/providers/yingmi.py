@@ -101,6 +101,9 @@ class YingmiMcpClient:
         )
         self._initialized = True
 
+    def ping(self) -> None:
+        self._ensure_initialized()
+
     def call(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """调用一个工具，返回解析后的 JSON（盈米直接返回业务 JSON）。"""
         self._ensure_initialized()

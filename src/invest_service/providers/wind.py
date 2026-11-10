@@ -91,6 +91,29 @@ class WindMcpClient:
             raise WindMcpError(f"未知的 Wind 数据域: {server}") from exc
         return f"{self.BASE}/{path}/mcp/"
 
+    def ping(self) -> None:
+        """最轻量的一次 initialize，用于探测账号/余额是否恢复。"""
+        self._next_id += 1
+        self.client.post(
+            self._url("stock"),
+            json={
+                "jsonrpc": "2.0",
+                "id": self._next_id,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "invest-probe", "version": "0.1.0"},
+                },
+            },
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+                "Authorization": f"Bearer {self.api_key}",
+            },
+            timeout=self.timeout,
+        )
+
     def call(self, server: str, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         self._next_id += 1
         payload = {

@@ -393,6 +393,25 @@ class ProviderUsage(Base):
     )
 
 
+class ProviderState(Base):
+    """Circuit-breaker state for metered providers.
+
+    status: ``ok`` | ``daily`` (re-enable next day) | ``credit`` (balance or
+    total quota exhausted; stays off until a probe succeeds or a manual reset).
+    """
+
+    __tablename__ = "provider_state"
+
+    provider: Mapped[str] = mapped_column(String(32), primary_key=True)
+    status: Mapped[str] = mapped_column(String(16), default="ok")
+    disabled_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str | None] = mapped_column(Text)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class SkillRun(Base):
     """One execution of an unstructured skill (e.g. Wind Alice workflows)."""
 

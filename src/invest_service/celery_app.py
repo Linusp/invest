@@ -21,6 +21,8 @@ from .providers.ifind_mcp import IfindMcpClient
 from .providers.sector_flow import EastMoneySectorFlow
 from .schema_compat import migrate_legacy_data, prepare_legacy_schema
 from .services import ExchangeRateService, MarketService
+from .services.provider_gate import ProviderGateService
+from .services.provider_probe import probe_provider
 from .services.quote_snapshot import QuoteSnapshotService
 from .services.sector_capital_flow import SectorCapitalFlowService
 from .services.trade_plan_evaluator import evaluate_plan
@@ -93,6 +95,12 @@ def build_beat_schedule(settings: Settings) -> dict[str, dict[str, Any]]:
                 "schedule": refresh_seconds,
                 "options": {"expires": refresh_seconds},
             }
+    # 每天探测一次被余额熔断的 provider，恢复了就自动放行。
+    schedule["recover-provider-states"] = {
+        "task": "invest.recover_provider_states",
+        "schedule": crontab(hour=9, minute=10),
+        "options": {"expires": 6 * 60 * 60},
+    }
     if settings.quote_snapshot_enabled:
         snapshot_seconds = settings.quote_snapshot_interval_minutes * 60
         schedule["update-quote-snapshots"] = {
@@ -408,6 +416,28 @@ def update_quote_snapshots() -> dict[str, Any]:
     if not _in_trading_window():
         return {"skipped": "outside trading hours"}
     return run_quote_snapshot_update(SessionLocal, current_settings)
+
+
+@celery_app.task(name="invest.recover_provider_states")
+def recover_provider_states() -> dict[str, Any]:
+    """对 credit 状态的 provider 做一次轻量探测，成功则解除熔断。"""
+    current_settings = get_settings()
+    recovered: list[str] = []
+    still_down: list[str] = []
+    with SessionLocal() as session:
+        gate = ProviderGateService(session)
+        for row in gate.status():
+            if row["status"] != "credit":
+                continue
+            provider = row["provider"]
+            ok, detail = probe_provider(provider, current_settings)
+            if ok:
+                gate.reset(provider)
+                recovered.append(provider)
+            else:
+                still_down.append(provider)
+                logger.info("[provider-gate] %s still down: %s", provider, detail[:120])
+    return {"recovered": recovered, "still_down": still_down}
 
 
 def run_worker() -> None:
