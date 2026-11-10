@@ -20,6 +20,7 @@ from .providers.ifind_mcp import IfindMcpClient
 from .providers.indexhub import IndexHubClient
 from .providers.iwencai import IwencaiProvider
 from .providers.miaoxiang import MxMcpClient
+from .providers.tdx_mcp import TdxMcpClient, to_setcode
 from .providers.wind_skills import (
     ALICE_SKILLS,
     WindAliceClient,
@@ -42,6 +43,10 @@ YINGMI_NEWS_TTL = timedelta(hours=3)
 MX_DATA_TTL = timedelta(hours=6)
 MX_NEWS_TTL = timedelta(hours=3)
 INDEXHUB_TTL = timedelta(hours=6)
+TDX_QUOTE_TTL = timedelta(minutes=1)
+TDX_KLINE_TTL = timedelta(hours=1)
+TDX_FIN_TTL = timedelta(hours=6)
+TDX_NEWS_TTL = timedelta(hours=3)
 
 # 妙想的 11 个工具都只收自然语言 query，用 domain 收口成一个入口。
 MX_DOMAINS = {
@@ -125,6 +130,38 @@ def _yingmi_call(session, tool: str, arguments: dict, ttl: timedelta, refresh: b
         enabled=settings.external_cache_enabled and not refresh,
     )
     return {**payload, "cached": hit}
+
+
+def _require_tdx_key() -> str:
+    key = get_settings().tdx_api_key
+    if not key:
+        raise WindSkillError("INVEST_TDX_API_KEY 未配置，无法调用通达信")
+    return key
+
+
+def _tdx_call(session, tool: str, arguments: dict[str, Any], ttl: timedelta, refresh: bool):
+    settings = get_settings()
+    key = _require_tdx_key()
+    cache = ExternalCacheService(session)
+
+    def fetch() -> dict[str, Any]:
+        payload = _metered(
+            session,
+            "tdx",
+            settings.tdx_daily_limit,
+            lambda: TdxMcpClient(key).call(tool, arguments),
+        )
+        return {"tool": tool, "arguments": arguments, "data": payload}
+
+    cached, hit = cache.get_or_fetch(
+        "tdx",
+        tool,
+        arguments,
+        ttl,
+        fetch,
+        enabled=settings.external_cache_enabled and not refresh,
+    )
+    return {**cached, "cached": hit}
 
 
 def _require_indexhub_key() -> str:
@@ -761,6 +798,107 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
             )
 
     @mcp.tool()
+    def tdx_quote(stock_code: str, refresh: bool = False) -> dict:
+        """通达信实时快照（单只，1 分钟缓存）。stock_code 形如 600519.SH。"""
+        with session_factory() as session:
+            return _tdx_call(
+                session,
+                "tdx_quotes",
+                {"code": stock_code.split(".")[0], "setcode": to_setcode(stock_code)},
+                TDX_QUOTE_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def tdx_kline(
+        stock_code: str,
+        period: str = "1d",
+        want_num: int = 100,
+        refresh: bool = False,
+    ) -> dict:
+        """通达信 K 线（日/周/月/分钟，1 小时缓存）。"""
+        with session_factory() as session:
+            return _tdx_call(
+                session,
+                "tdx_kline",
+                {
+                    "code": stock_code.split(".")[0],
+                    "setcode": to_setcode(stock_code),
+                    "period": period,
+                    "wantNum": want_num,
+                },
+                TDX_KLINE_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def tdx_stock_lookup(query: str, refresh: bool = False) -> dict:
+        """按名称/代码/拼音查标的（6 小时缓存）。"""
+        with session_factory() as session:
+            return _tdx_call(
+                session, "tdx_lookup_stock", {"query": query}, TDX_FIN_TTL, refresh
+            )
+
+    @mcp.tool()
+    def tdx_api_data(
+        entry: str,
+        params: dict | None = None,
+        stock_code: str | None = None,
+        begin_date: str | None = None,
+        end_date: str | None = None,
+        refresh: bool = False,
+    ) -> dict:
+        """通达信预设数据接口（80+ 种：财务、股东、龙虎榜、研报评级等）。
+
+        ``entry`` 是预设编号/名称，具体取值由通达信定义；其余参数按需补。
+        """
+        arguments: dict[str, Any] = {"entry": entry}
+        if params:
+            arguments["params"] = params
+        if stock_code:
+            arguments["code"] = stock_code.split(".")[0]
+        if begin_date:
+            arguments["beginDate"] = begin_date
+        if end_date:
+            arguments["endDate"] = end_date
+        with session_factory() as session:
+            return _tdx_call(session, "tdx_api_data", arguments, TDX_FIN_TTL, refresh)
+
+    @mcp.tool()
+    def tdx_screener(message: str, page_size: int = 20, refresh: bool = False) -> dict:
+        """自然语言条件选股（1 小时缓存）。"""
+        with session_factory() as session:
+            return _tdx_call(
+                session,
+                "tdx_screener",
+                {"message": message, "pageNo": 1, "pageSize": min(page_size, 100)},
+                TDX_KLINE_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def tdx_news(
+        kind: str,
+        query: str,
+        top_k: int = 5,
+        refresh: bool = False,
+    ) -> dict:
+        """通达信资讯：kind = news / report / notice / macro（3 小时缓存）。"""
+        tools = {
+            "news": "wenda_news_query",
+            "report": "wenda_report_query",
+            "notice": "wenda_notice_query",
+            "macro": "wenda_macro_query",
+        }
+        tool = tools.get(kind)
+        if tool is None:
+            raise WindSkillError(f"kind 必须是以下之一: {', '.join(tools)}")
+        with session_factory() as session:
+            return _tdx_call(
+                session, tool, {"query": query, "top_k": top_k}, TDX_NEWS_TTL, refresh
+            )
+
+    @mcp.tool()
     def provider_status() -> list[dict]:
         """Show each provider's circuit-breaker state and today's call count.
 
@@ -771,7 +909,7 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
             gate = ProviderGateService(session)
             usage = ProviderUsageService(session)
             states = {row["provider"]: row for row in gate.status()}
-            providers = ["wind", "ifind", "iwencai", "yingmi", "mx", "indexhub"]
+            providers = ["wind", "ifind", "iwencai", "yingmi", "mx", "indexhub", "tdx"]
             result = []
             for provider in providers:
                 state = states.get(provider, {"status": "ok"})
