@@ -77,6 +77,11 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("INVEST_WIND_API_KEY_FILE", "WIND_API_KEY_FILE"),
     )
+    # 盈米基金 MCP（基金/组合/投研能力）。
+    yingmi_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("INVEST_YINGMI_API_KEY", "YINGMI_API_KEY"),
+    )
     # 历史行情的源优先级（从高到低，逗号分隔）。
     provider_priority: str = "akshare,eastmoney,tushare,wind,iwencai"
     # 外部能力（Wind/iFinD/问财）的响应缓存，减少额度消耗。
@@ -84,6 +89,7 @@ class Settings(BaseSettings):
     # 每日调用上限（0 = 不限制）。问财进阶版约 500 次/天，iFinD 试用为总量额度。
     wind_daily_limit: int = Field(default=0, ge=0)
     iwencai_daily_limit: int = Field(default=0, ge=0)
+    yingmi_daily_limit: int = Field(default=0, ge=0)
     ifind_daily_limit: int = Field(default=0, ge=0)
 
     model_config = SettingsConfigDict(

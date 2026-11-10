@@ -26,6 +26,7 @@ from .providers.wind_skills import (
     WindSkillError,
     resolve_alice_skill,
 )
+from .providers.yingmi import YingmiMcpClient
 from .services.external_cache import ExternalCacheService, cache_key
 from .services.provider_usage import ProviderUsageService
 from .services.skill_runs import SkillRunService
@@ -34,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 WIND_DATA_TTL = timedelta(hours=6)
 ALICE_TTL = timedelta(hours=24)
+YINGMI_FUND_TTL = timedelta(hours=6)
+YINGMI_NEWS_TTL = timedelta(hours=3)
 IFIND_NEWS_TTL = timedelta(hours=3)
 IFIND_SECTOR_TTL = timedelta(hours=6)
 IWENCAI_TTL = timedelta(hours=6)
@@ -56,6 +59,39 @@ def _metered(session, provider: str, limit: int, fetch):
     payload = fetch()
     usage.record(provider)
     return payload
+
+
+def _require_yingmi_key() -> str:
+    key = get_settings().yingmi_api_key
+    if not key:
+        raise WindSkillError("INVEST_YINGMI_API_KEY 未配置，无法调用盈米能力")
+    return key
+
+
+def _yingmi_call(session, tool: str, arguments: dict, ttl: timedelta, refresh: bool):
+    """统一处理盈米工具的缓存与额度记账。"""
+    settings = get_settings()
+    key = _require_yingmi_key()
+    cache = ExternalCacheService(session)
+
+    def fetch() -> dict[str, Any]:
+        payload = _metered(
+            session,
+            "yingmi",
+            settings.yingmi_daily_limit,
+            lambda: YingmiMcpClient(key).call(tool, arguments),
+        )
+        return {"tool": tool, "data": payload}
+
+    payload, hit = cache.get_or_fetch(
+        "yingmi",
+        tool,
+        arguments,
+        ttl,
+        fetch,
+        enabled=settings.external_cache_enabled and not refresh,
+    )
+    return {**payload, "cached": hit}
 
 
 def _require_ifind_key() -> str:
@@ -367,6 +403,98 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
                 enabled=settings.external_cache_enabled and not refresh,
             )
         return {**payload, "cached": hit}
+
+    @mcp.tool()
+    def yingmi_fund_search(keyword: str, limit: int = 10, refresh: bool = False) -> dict:
+        """Search funds by name or code (盈米).
+
+        Returns fundCode, fundName, type, setup date and year-to-date return.
+        Cached for 6 hours.
+        """
+        with session_factory() as session:
+            return _yingmi_call(
+                session,
+                "SearchFunds",
+                {"keyword": keyword, "page": 0, "size": min(limit, 50)},
+                YINGMI_FUND_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def yingmi_fund_detail(fund_codes: list[str], refresh: bool = False) -> dict:
+        """Fund profile: tags, fees, manager, scale, benchmark (盈米)."""
+        with session_factory() as session:
+            return _yingmi_call(
+                session, "BatchGetFundsDetail", {"fundCodes": fund_codes}, YINGMI_FUND_TTL, refresh
+            )
+
+    @mcp.tool()
+    def yingmi_fund_performance(fund_codes: list[str], refresh: bool = False) -> dict:
+        """Fund performance table across horizons plus risk-control metrics (盈米)."""
+        with session_factory() as session:
+            return _yingmi_call(
+                session,
+                "GetBatchFundPerformance",
+                {"fundCodes": fund_codes},
+                YINGMI_FUND_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def yingmi_fund_nav(
+        fund_codes: list[str],
+        dimension: str = "oneMonth",
+        refresh: bool = False,
+    ) -> dict:
+        """Fund NAV history (盈米).
+
+        dimension: oneMonth / quarter / halfYear / oneYear / threeYear / fiveYear.
+        """
+        with session_factory() as session:
+            return _yingmi_call(
+                session,
+                "BatchGetFundNavHistory",
+                {"fundCodes": fund_codes, "dimensionType": dimension},
+                YINGMI_FUND_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def yingmi_fund_risk(fund_codes: list[str], refresh: bool = False) -> dict:
+        """Fund risk metrics: Sharpe, max drawdown, volatility (盈米)."""
+        with session_factory() as session:
+            return _yingmi_call(
+                session, "AnalyzeFundRisk", {"fundCodes": fund_codes}, YINGMI_FUND_TTL, refresh
+            )
+
+    @mcp.tool()
+    def yingmi_fund_diagnosis(fund_code: str, refresh: bool = False) -> dict:
+        """Full fund diagnosis: risk, valuation, industry, style, holdings (盈米)."""
+        with session_factory() as session:
+            return _yingmi_call(
+                session,
+                "GetFundDiagnosis",
+                {"fundCode": fund_code},
+                YINGMI_FUND_TTL,
+                refresh,
+            )
+
+    @mcp.tool()
+    def yingmi_fund_news(
+        keyword: str,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        page_size: int = 10,
+        refresh: bool = False,
+    ) -> dict:
+        """Fund-related financial news search (盈米), dates as YYYY-MM-DD."""
+        arguments: dict[str, Any] = {"keyword": keyword, "page": 1, "pageSize": min(page_size, 20)}
+        if start_date:
+            arguments["startDate"] = start_date
+        if end_date:
+            arguments["endDate"] = end_date
+        with session_factory() as session:
+            return _yingmi_call(session, "SearchFinancialNews", arguments, YINGMI_NEWS_TTL, refresh)
 
     @mcp.tool()
     def list_skill_runs(limit: int = 20, source: str | None = None) -> list[dict]:
