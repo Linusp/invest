@@ -132,3 +132,20 @@ akshare,eastmoney,tushare,wind,iwencai
 - **额度**：问财按天计次，耗尽时返回 401 并在错误里写明「当日额度已用完」；Wind Alice 有独立的
   体验期限额，服务端繁忙时会返回「服务繁忙」。
 - 结构化结果与 Markdown 原样返回，不做二次改写，避免丢失上游信息。
+
+## Provider 熔断与恢复
+
+所有走 `_metered` 的外部能力（Wind / iFinD / 问财 / 盈米 / 妙想 / 指数直通车）
+都受 `provider_state` 状态机保护，不需要手工禁用：
+
+| 触发 | 状态 | 恢复方式 |
+|---|---|---|
+| 当日调用数达到 `*_DAILY_LIMIT` | `daily` | **次日 00:00 自动恢复** |
+| 返回余额/积分不足（「积分余额不足」「额度已用完」「quota exceeded」等） | `credit` | 充值后 `provider_reset`，或每天 09:10 的自动探测成功后恢复 |
+| 其它错误（网络、参数） | 不变 | 错误继续往上抛，不熔断 |
+
+- 熔断期间调用**直接报错，不发网络请求、不计数**。
+- `provider_status` 查看每个 provider 的状态、原因、今日调用数；
+  `provider_reset` 手动解除。
+- 自动恢复任务 `invest.recover_provider_states` 每天 09:10 对 `credit` 状态做一次
+  轻量 MCP initialize 探测（不消耗业务额度），成功即放行。
