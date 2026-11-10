@@ -82,6 +82,11 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("INVEST_YINGMI_API_KEY", "YINGMI_API_KEY"),
     )
+    # 东方财富妙想 MCP（Choice 数据库）。
+    mx_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("INVEST_MX_API_KEY", "MX_API_KEY"),
+    )
     # 历史行情的源优先级（从高到低，逗号分隔）。
     provider_priority: str = "akshare,eastmoney,tushare,wind,iwencai"
     # 外部能力（Wind/iFinD/问财）的响应缓存，减少额度消耗。
@@ -90,6 +95,7 @@ class Settings(BaseSettings):
     wind_daily_limit: int = Field(default=0, ge=0)
     iwencai_daily_limit: int = Field(default=0, ge=0)
     yingmi_daily_limit: int = Field(default=0, ge=0)
+    mx_daily_limit: int = Field(default=0, ge=0)
     ifind_daily_limit: int = Field(default=0, ge=0)
 
     model_config = SettingsConfigDict(

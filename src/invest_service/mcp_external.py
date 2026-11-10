@@ -18,6 +18,7 @@ from sqlalchemy.orm import sessionmaker
 from .config import get_settings
 from .providers.ifind_mcp import IfindMcpClient
 from .providers.iwencai import IwencaiProvider
+from .providers.miaoxiang import MxMcpClient
 from .providers.wind_skills import (
     ALICE_SKILLS,
     DATA_TOOLS,
@@ -37,6 +38,23 @@ WIND_DATA_TTL = timedelta(hours=6)
 ALICE_TTL = timedelta(hours=24)
 YINGMI_FUND_TTL = timedelta(hours=6)
 YINGMI_NEWS_TTL = timedelta(hours=3)
+MX_DATA_TTL = timedelta(hours=6)
+MX_NEWS_TTL = timedelta(hours=3)
+
+# 妙想的 11 个工具都只收自然语言 query，用 domain 收口成一个入口。
+MX_DOMAINS = {
+    "ashare": "mx_ashare_finance_data",
+    "fund": "mx_fund_finance_data",
+    "hk": "mx_hk_finance_data",
+    "us": "mx_us_finance_data",
+    "index_block": "mx_index_block_finance_data",
+    "bond": "mx_bond_finance_data",
+    "macro": "mx_macro_data",
+    "comprehensive": "mx_comprehensive_finance_data",
+    "news": "mx_finance_search_news",
+    "notice": "mx_finance_search_notice",
+    "screener": "mx_stocks_screener",
+}
 IFIND_NEWS_TTL = timedelta(hours=3)
 IFIND_SECTOR_TTL = timedelta(hours=6)
 IWENCAI_TTL = timedelta(hours=6)
@@ -87,6 +105,38 @@ def _yingmi_call(session, tool: str, arguments: dict, ttl: timedelta, refresh: b
         "yingmi",
         tool,
         arguments,
+        ttl,
+        fetch,
+        enabled=settings.external_cache_enabled and not refresh,
+    )
+    return {**payload, "cached": hit}
+
+
+def _require_mx_key() -> str:
+    key = get_settings().mx_api_key
+    if not key:
+        raise WindSkillError("INVEST_MX_API_KEY 未配置，无法调用妙想能力")
+    return key
+
+
+def _mx_call(session, tool: str, query: str, ttl: timedelta, refresh: bool):
+    settings = get_settings()
+    key = _require_mx_key()
+    cache = ExternalCacheService(session)
+
+    def fetch() -> dict[str, Any]:
+        payload = _metered(
+            session,
+            "mx",
+            settings.mx_daily_limit,
+            lambda: MxMcpClient(key).call(tool, query),
+        )
+        return {"tool": tool, "query": query, "data": payload}
+
+    payload, hit = cache.get_or_fetch(
+        "mx",
+        tool,
+        {"query": query},
         ttl,
         fetch,
         enabled=settings.external_cache_enabled and not refresh,
@@ -495,6 +545,27 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
             arguments["endDate"] = end_date
         with session_factory() as session:
             return _yingmi_call(session, "SearchFinancialNews", arguments, YINGMI_NEWS_TTL, refresh)
+
+    @mcp.tool()
+    def mx_finance(domain: str, query: str, refresh: bool = False) -> dict:
+        """Query 东方财富妙想 (Choice) data with one natural-language question.
+
+        Pick ``domain`` by asset class:
+        ashare (A股), fund, hk, us, index_block (指数/板块), bond, macro,
+        comprehensive (跨市场/期货期权), news (资讯/研报), notice (公告),
+        screener (按条件选股/选基).
+
+        ``query`` should name the security and the fields you want, e.g.
+        "贵州茅台 最新价 市盈率 总市值". Cached for 6 hours (news/notice 3).
+        """
+        tool = MX_DOMAINS.get(domain)
+        if tool is None:
+            raise WindSkillError(
+                f"domain 必须是以下之一: {', '.join(MX_DOMAINS)}"
+            )
+        ttl = MX_NEWS_TTL if domain in {"news", "notice"} else MX_DATA_TTL
+        with session_factory() as session:
+            return _mx_call(session, tool, query, ttl, refresh)
 
     @mcp.tool()
     def list_skill_runs(limit: int = 20, source: str | None = None) -> list[dict]:
