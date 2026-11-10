@@ -103,7 +103,7 @@ akshare,eastmoney,tushare,wind,iwencai
 
 | 工具 | 来源 | 说明 | 缓存 |
 |---|---|---|---|
-| `wind_data` | Wind | 7 个结构化工具：公司摘要、财务、股东、风险、事件、技术指标、选股 | 6 小时 |
+| `wind_data` | Wind | 按 `domain` 覆盖 stock/fund/index/bond/econ/docs/analytics 七个域；自然语言或结构化参数都支持 | 6 小时 |
 | `wind_alice` | Wind | 14 个分析工作流（公司一页纸、财报点评、可比公司等），返回 Markdown | 24 小时 |
 | `list_skill_runs` | 本地 | 列出历史 skill 执行记录（提示词、输出、耗时、是否命中缓存） | — |
 | `ifind_news` / `ifind_notices` | iFinD | 新闻与公告片段 | 3 小时 |

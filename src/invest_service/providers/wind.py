@@ -72,6 +72,10 @@ class WindMcpClient:
         "stock": "vserver_stock_data",
         "index": "vserver_index_data",
         "fund": "vserver_fund_data",
+        "bond": "vserver_bond_data",
+        "econ": "vserver_economic_data",
+        "docs": "vserver_financial_docs",
+        "analytics": "vserver_analytics_data",
     }
 
     def __init__(self, api_key: str, client: httpx.Client | None = None, timeout: float = 30.0):
