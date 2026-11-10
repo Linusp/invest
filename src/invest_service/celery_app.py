@@ -350,14 +350,21 @@ def run_sector_capital_flow_update(
     session_factory: sessionmaker,
     settings: Settings,
 ) -> dict[str, Any]:
+    provider = EastMoneySectorFlow()
     with session_factory() as session:
-        result = SectorCapitalFlowService(session).refresh_daily(
+        service = SectorCapitalFlowService(session)
+        result = service.refresh_daily(
             lookback_days=settings.sector_flow_lookback_days,
-            provider=EastMoneySectorFlow(),
+            provider=provider,
             sync_scopes=settings.sector_flow_sync_scopes_enabled,
             scopes_top=settings.sector_flow_sync_scopes_top,
             scopes_parent=settings.sector_flow_sync_scopes_parent,
         )
+        # 收盘后再抓一次分钟序列，保证每个交易日都留下完整的当日回放。
+        if settings.sector_flow_intraday_minutes > 0:
+            result["intraday"] = service.refresh_intraday(
+                provider=provider, top=settings.sector_flow_intraday_top
+            )
     logger.info(
         "[sector-flow] refresh finished: %s",
         result,
