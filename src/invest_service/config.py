@@ -68,6 +68,18 @@ class Settings(BaseSettings):
     # 只抓自选标的：每次约 6 次 MCP 调用，避免把整个目录都拉一遍。
     quote_snapshot_favorites_only: bool = True
 
+    # Wind（万得）MCP 行情源；与 iFinD 一样支持密钥文件，避免明文进配置。
+    wind_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("INVEST_WIND_API_KEY", "WIND_API_KEY"),
+    )
+    wind_api_key_file: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("INVEST_WIND_API_KEY_FILE", "WIND_API_KEY_FILE"),
+    )
+    # 历史行情的源优先级（从高到低，逗号分隔）。
+    provider_priority: str = "akshare,eastmoney,tushare,wind,iwencai"
+
     model_config = SettingsConfigDict(
         env_prefix="INVEST_",
         env_file=".env",
@@ -89,6 +101,17 @@ class Settings(BaseSettings):
         if value.startswith("mysql://"):
             return value.replace("mysql://", "mysql+pymysql://", 1)
         return value
+
+    def wind_key(self) -> str | None:
+        """Resolve the Wind MCP key, preferring the mounted secret file."""
+        if self.wind_api_key:
+            return self.wind_api_key.strip() or None
+        if self.wind_api_key_file:
+            try:
+                return Path(self.wind_api_key_file).read_text(encoding="utf-8").strip() or None
+            except OSError:
+                return None
+        return None
 
     def ifind_key(self) -> str | None:
         """Resolve the iFinD MCP key from config, falling back to the secret file."""

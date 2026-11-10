@@ -259,7 +259,12 @@ def test_factory_can_keep_configured_provider_first_order():
     assert isinstance(provider.primary, TushareProvider)
 
 
-def test_factory_places_iwencai_before_paid_tushare_history():
+def test_factory_orders_tushare_before_quota_limited_providers():
+    """默认优先级：免费源 → Tushare → 问财（按天额度）。
+
+    问财排在 Tushare 之后是 2026-11 明确的产品口径：免费源优先，Tushare 次之，
+    Wind/问财这类按天计次的源再次之，iFinD（试用额度最低）最后。
+    """
     provider = make_market_provider(
         Settings(
             market_provider="tushare",
@@ -276,4 +281,5 @@ def test_factory_places_iwencai_before_paid_tushare_history():
     ]
     for category in AssetCategory:
         history_types = [type(item) for item in provider.history_providers[category]]
-        assert history_types[-2:] == [IwencaiProvider, TushareProvider]
+        assert history_types[-1] is IwencaiProvider
+        assert history_types.index(TushareProvider) < history_types.index(IwencaiProvider)

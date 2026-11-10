@@ -10,6 +10,7 @@ from .fallback import (
 )
 from .iwencai import IwencaiProvider
 from .tushare import TushareProvider
+from .wind import WindMarketProvider
 
 __all__ = [
     "EastMoneyProvider",
@@ -26,5 +27,6 @@ __all__ = [
     "ProviderError",
     "ProviderExchangeRates",
     "TushareProvider",
+    "WindMarketProvider",
     "make_market_provider",
 ]

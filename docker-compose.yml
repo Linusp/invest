@@ -24,6 +24,8 @@ x-invest-environment: &invest-environment
   INVEST_SECTOR_FLOW_SYNC_SCOPES_TOP: ${INVEST_SECTOR_FLOW_SYNC_SCOPES_TOP:-30}
   INVEST_SECTOR_FLOW_SYNC_SCOPES_PARENT: ${INVEST_SECTOR_FLOW_SYNC_SCOPES_PARENT:-em_industry}
   INVEST_IFIND_MCP_KEY_FILE: ${INVEST_IFIND_MCP_KEY_FILE:-/run/secrets/ifind-mcp.key}
+  INVEST_WIND_API_KEY_FILE: ${INVEST_WIND_API_KEY_FILE:-/run/secrets/wind.key}
+  INVEST_PROVIDER_PRIORITY: ${INVEST_PROVIDER_PRIORITY:-akshare,eastmoney,tushare,wind,iwencai}
   INVEST_QUOTE_SNAPSHOT_ENABLED: ${INVEST_QUOTE_SNAPSHOT_ENABLED:-false}
   INVEST_QUOTE_SNAPSHOT_INTERVAL_MINUTES: ${INVEST_QUOTE_SNAPSHOT_INTERVAL_MINUTES:-30}
   INVEST_QUOTE_SNAPSHOT_FAVORITES_ONLY: ${INVEST_QUOTE_SNAPSHOT_FAVORITES_ONLY:-true}
@@ -40,6 +42,7 @@ x-invest-service: &invest-service
     - invest-data:/data
     # iFinD MCP 密钥只读挂载，密钥本身不进仓库、不进 .env
     - ${HOME}/.dsh/ifind-mcp.key:/run/secrets/ifind-mcp.key:ro
+    - ${HOME}/.dsh/wind.key:/run/secrets/wind.key:ro
 
 services:
   redis:
@@ -90,6 +93,7 @@ services:
       - invest-data:/data
       - invest-beat:/var/run/celery
       - ${HOME}/.dsh/ifind-mcp.key:/run/secrets/ifind-mcp.key:ro
+      - ${HOME}/.dsh/wind.key:/run/secrets/wind.key:ro
 
 volumes:
   invest-data:

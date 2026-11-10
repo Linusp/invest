@@ -20,6 +20,22 @@
 
 Celery Beat 每天在 `SEARCH_INDEX_UPDATE_HOUR`（默认北京时间 3 点）发布构建任务。目录任务合并 AkShare、问财和 Tushare 来源；问财港股代码统一补齐为五位并使用 `.HK`，美股代码统一使用 `.US`，原始代码作为别名保留。单个来源失败不会阻断其他来源。
 
+## 源优先级（PROVIDER_PRIORITY）
+
+`PROVIDER_PRIORITY` 决定历史日线的尝试顺序，从高到低用逗号分隔，默认：
+
+```
+akshare,eastmoney,tushare,wind,iwencai
+```
+
+- 免费源（AkShare / 东方财富）优先；Tushare 次之；Wind、问财这类按天计次的源排在后面。
+- 单个源未配置密钥时自动从链里剔除，不会报错。
+- 类别限制保留：指数默认不挂东方财富，ETF 在 `ETF_FALLBACK_PROVIDER=none` 时只走东方财富。
+- **iFinD 不参与历史日线**：它的 MCP 只有实时/日内快照（`stock_highfreq_quotes`），没有 K 线工具；
+  它只用于 `QUOTE_SNAPSHOT_ENABLED` 的实时快照链。
+- Wind 走 `mcp.wind.com.cn/vserver_{stock,index,fund}_data` 的 K 线接口，密钥读
+  `WIND_API_KEY_FILE`（Compose 挂载 `~/.dsh/wind.key`）。
+
 ## 定时任务
 
 - Beat 默认每 60 分钟发布自选及持仓行情更新任务。
