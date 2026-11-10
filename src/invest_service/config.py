@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     quote_snapshot_favorites_only: bool = True
 
     # Wind（万得）MCP 行情源；与 iFinD 一样支持密钥文件，避免明文进配置。
+    # 会消耗 Wind 积分（而非普通调用额度）的工具，默认禁用，逗号分隔。
+    wind_blocked_tools: str = "get_company_announcements"
     wind_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("INVEST_WIND_API_KEY", "WIND_API_KEY"),

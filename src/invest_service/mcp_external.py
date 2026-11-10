@@ -241,6 +241,16 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
         """
         if arguments is None and not (question or "").strip():
             raise WindSkillError("需要提供 question 或 arguments")
+        blocked = {
+            name.strip()
+            for name in get_settings().wind_blocked_tools.split(",")
+            if name.strip()
+        }
+        if tool in blocked:
+            raise WindSkillError(
+                f"{tool} 会消耗 Wind 积分，已默认禁用"
+                "（INVEST_WIND_BLOCKED_TOOLS 控制）；公告类请改用 ifind_notices"
+            )
         key = _require_wind_key()
         cache_args = {
             "domain": domain,
