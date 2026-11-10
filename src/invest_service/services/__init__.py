@@ -3,6 +3,7 @@ from .exchange_rate import ExchangeRateService, ExchangeRateUnavailable
 from .information import InformationNotFound, InformationService
 from .market import AssetNotFound, MarketService, TagNotFound
 from .market_scope import MarketScopeInUse, MarketScopeNotFound, MarketScopeService
+from .quote_snapshot import QuoteSnapshotService
 from .sector_capital_flow import SectorCapitalFlowService, SectorFlowNotFound
 from .strategy import InvalidTrade, StrategyNotFound, StrategyService
 from .trade_plan import InvalidTradePlan, TradePlanNotFound, TradePlanService
@@ -20,6 +21,7 @@ __all__ = [
     "MarketScopeInUse",
     "MarketScopeNotFound",
     "MarketScopeService",
+    "QuoteSnapshotService",
     "SectorCapitalFlowService",
     "SectorFlowNotFound",
     "StrategyNotFound",

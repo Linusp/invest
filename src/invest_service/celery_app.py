@@ -1,6 +1,7 @@
 import logging
 from datetime import date, datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from celery import Celery
 from celery.schedules import crontab
@@ -16,13 +17,17 @@ from .providers import (
     ProviderError,
     make_market_provider,
 )
+from .providers.ifind_mcp import IfindMcpClient
 from .providers.sector_flow import EastMoneySectorFlow
 from .schema_compat import migrate_legacy_data, prepare_legacy_schema
 from .services import ExchangeRateService, MarketService
+from .services.quote_snapshot import QuoteSnapshotService
 from .services.sector_capital_flow import SectorCapitalFlowService
 from .services.trade_plan_evaluator import evaluate_plan
 
 logger = logging.getLogger(__name__)
+
+SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 MARKET_UPDATE_SOFT_TIME_LIMIT = 15 * 60
 MARKET_UPDATE_TIME_LIMIT = 16 * 60
@@ -34,6 +39,8 @@ SEARCH_INDEX_SOFT_TIME_LIMIT = 25 * 60
 SEARCH_INDEX_TIME_LIMIT = 30 * 60
 SECTOR_FLOW_SOFT_TIME_LIMIT = 15 * 60
 SECTOR_FLOW_TIME_LIMIT = 20 * 60
+QUOTE_SNAPSHOT_SOFT_TIME_LIMIT = 120
+QUOTE_SNAPSHOT_TIME_LIMIT = 180
 
 
 def build_beat_schedule(settings: Settings) -> dict[str, dict[str, Any]]:
@@ -86,6 +93,13 @@ def build_beat_schedule(settings: Settings) -> dict[str, dict[str, Any]]:
                 "schedule": refresh_seconds,
                 "options": {"expires": refresh_seconds},
             }
+    if settings.quote_snapshot_enabled:
+        snapshot_seconds = settings.quote_snapshot_interval_minutes * 60
+        schedule["update-quote-snapshots"] = {
+            "task": "invest.update_quote_snapshots",
+            "schedule": snapshot_seconds,
+            "options": {"expires": snapshot_seconds},
+        }
     return schedule
 
 
@@ -349,6 +363,51 @@ def update_sector_capital_flow() -> dict[str, Any]:
     if not current_settings.sector_flow_enabled:
         return {"disabled": True}
     return run_sector_capital_flow_update(SessionLocal, current_settings)
+
+
+def _in_trading_window(moment: datetime | None = None) -> bool:
+    """A 股连续竞价时段（含集合竞价与收盘后的最后一次快照）。"""
+    current = (moment or datetime.now(tz=SHANGHAI)).astimezone(SHANGHAI)
+    if current.weekday() >= 5:
+        return False
+    return (9, 15) <= (current.hour, current.minute) <= (15, 10)
+
+
+def run_quote_snapshot_update(
+    session_factory: sessionmaker,
+    settings: Settings,
+) -> dict[str, Any]:
+    key = settings.ifind_key()
+    if not key:
+        raise ProviderError("iFinD MCP key is not configured")
+    client = IfindMcpClient(key)
+    try:
+        with session_factory() as session:
+            result = QuoteSnapshotService(session).refresh(
+                client, favorites_only=settings.quote_snapshot_favorites_only
+            )
+    finally:
+        client.client.close()
+    logger.info("[quote-snapshot] refresh finished: %s", result)
+    return result
+
+
+@celery_app.task(
+    name="invest.update_quote_snapshots",
+    autoretry_for=(ProviderError,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=2,
+    soft_time_limit=QUOTE_SNAPSHOT_SOFT_TIME_LIMIT,
+    time_limit=QUOTE_SNAPSHOT_TIME_LIMIT,
+)
+def update_quote_snapshots() -> dict[str, Any]:
+    current_settings = get_settings()
+    if not current_settings.quote_snapshot_enabled:
+        return {"disabled": True}
+    if not _in_trading_window():
+        return {"skipped": "outside trading hours"}
+    return run_quote_snapshot_update(SessionLocal, current_settings)
 
 
 def run_worker() -> None:

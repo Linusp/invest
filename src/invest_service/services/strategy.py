@@ -17,6 +17,7 @@ from ..models import (
     OpeningBalance,
     OpeningPosition,
     OpeningSnapshot,
+    QuoteSnapshot,
     Strategy,
     Trade,
     TradePlan,
@@ -513,6 +514,17 @@ class StrategyService:
                 price_stmt = price_stmt.where(MarketBar.trade_date <= as_of)
             latest = self.session.scalar(price_stmt.order_by(MarketBar.trade_date.desc()).limit(1))
             latest_price = latest.close if latest else None
+            price_date = latest.trade_date if latest else None
+            if as_of is None:
+                # 同一天有实时快照时优先用它，避免盘中估值停留在昨收。
+                snapshot = self.session.get(QuoteSnapshot, position.asset.key)
+                if (
+                    snapshot is not None
+                    and snapshot.price is not None
+                    and (price_date is None or snapshot.trade_date >= price_date)
+                ):
+                    latest_price = snapshot.price
+                    price_date = snapshot.trade_date
             market_value = latest_price * position.quantity if latest_price is not None else None
             valuation_date = as_of or date.today()
             market_value_report = (
@@ -534,7 +546,7 @@ class StrategyService:
                     cost_basis=_six(position.cost_basis),
                     cost_basis_report=_six(position.cost_basis_report),
                     latest_price=latest_price,
-                    latest_price_date=latest.trade_date if latest else None,
+                    latest_price_date=price_date,
                     market_value=_six(market_value) if market_value is not None else None,
                     market_value_report=(
                         _six(market_value_report)

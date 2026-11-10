@@ -58,5 +58,24 @@ Celery Beat 每天在 `SEARCH_INDEX_UPDATE_HOUR`（默认北京时间 3 点）�
 东方财富的行业口径是细粒度 BK 板块池（如「银行」「银行Ⅱ」「国有大型银行Ⅲ」并存），
 并非官方标准行业分类，引用时注意区分。
 
+## 实时行情快照（iFinD MCP）
+
+`QUOTE_SNAPSHOT_ENABLED=true` 时启用。Worker 通过同花顺 iFinD 官方 MCP 的
+`stock_highfreq_quotes` / `index_highfreq_quotes`（`data_mode=real_time`）取盘中快照，
+写入 `quote_snapshots`（每个标的覆盖写一行）。
+
+- 采集范围：默认只抓**自选**的 A 股与指数（ETF 不在 iFinD 这两个板块的工具范围内），
+  约 52 个标的、6 次 MCP 调用、耗时约 6 秒。
+- 调度：`QUOTE_SNAPSHOT_INTERVAL_MINUTES`（默认 30）在 A 股交易时段（09:15–15:10，工作日）
+  内执行，非交易时段任务直接返回 `skipped`。
+- 估值：`StrategyService.positions()` 在同一天的日线之上优先使用快照价，
+  因此盘中组合市值不再停留在昨收。
+- 密钥：`IFIND_MCP_KEY_FILE` 指向只读挂载的密钥文件（Compose 挂载
+  `~/.dsh/ifind-mcp.key` 到 `/run/secrets/ifind-mcp.key`），也可用 `IFIND_MCP_KEY` 直接给值。
+  密钥等同账号权限，不要写进 `.env` 或仓库。
+- 额度：iFinD 按工具调用计次（个人基础版 3,000 次/月、免费试用 2,000 次总量）。
+  默认配置约 48 次/交易日；把间隔调小或关掉「只抓自选」会显著放大消耗。
+- 限流：客户端对 429 做 1.5s / 3s 退避重试，并在批次之间留 0.8s 间隔。
+
 
 配置统一使用 `INVEST_` 前缀，修改 `.env` 后需重启 API、Worker 和 Beat。

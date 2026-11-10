@@ -23,6 +23,10 @@ x-invest-environment: &invest-environment
   INVEST_SECTOR_FLOW_SYNC_SCOPES_ENABLED: ${INVEST_SECTOR_FLOW_SYNC_SCOPES_ENABLED:-true}
   INVEST_SECTOR_FLOW_SYNC_SCOPES_TOP: ${INVEST_SECTOR_FLOW_SYNC_SCOPES_TOP:-30}
   INVEST_SECTOR_FLOW_SYNC_SCOPES_PARENT: ${INVEST_SECTOR_FLOW_SYNC_SCOPES_PARENT:-em_industry}
+  INVEST_IFIND_MCP_KEY_FILE: ${INVEST_IFIND_MCP_KEY_FILE:-/run/secrets/ifind-mcp.key}
+  INVEST_QUOTE_SNAPSHOT_ENABLED: ${INVEST_QUOTE_SNAPSHOT_ENABLED:-false}
+  INVEST_QUOTE_SNAPSHOT_INTERVAL_MINUTES: ${INVEST_QUOTE_SNAPSHOT_INTERVAL_MINUTES:-30}
+  INVEST_QUOTE_SNAPSHOT_FAVORITES_ONLY: ${INVEST_QUOTE_SNAPSHOT_FAVORITES_ONLY:-true}
   INVEST_CORS_ORIGINS: ${INVEST_CORS_ORIGINS:-[]}
   INVEST_MCP_ALLOWED_HOSTS: ${INVEST_MCP_ALLOWED_HOSTS:-["127.0.0.1","127.0.0.1:*","localhost","localhost:*","app","app:*"]}
   INVEST_MCP_ALLOWED_ORIGINS: ${INVEST_MCP_ALLOWED_ORIGINS:-[]}
@@ -34,6 +38,8 @@ x-invest-service: &invest-service
   environment: *invest-environment
   volumes:
     - invest-data:/data
+    # iFinD MCP 密钥只读挂载，密钥本身不进仓库、不进 .env
+    - ${HOME}/.dsh/ifind-mcp.key:/run/secrets/ifind-mcp.key:ro
 
 services:
   redis:
@@ -83,6 +89,7 @@ services:
     volumes:
       - invest-data:/data
       - invest-beat:/var/run/celery
+      - ${HOME}/.dsh/ifind-mcp.key:/run/secrets/ifind-mcp.key:ro
 
 volumes:
   invest-data:

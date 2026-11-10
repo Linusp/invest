@@ -330,6 +330,35 @@ class MarketBar(Base):
     asset: Mapped[Asset] = relationship(back_populates="history")
 
 
+class QuoteSnapshot(Base):
+    """iFinD real-time quote snapshot per asset.
+
+    One row per asset, overwritten on each collection. ``trade_date`` is the
+    trading day the snapshot belongs to, so valuation code can prefer it over
+    a stale daily bar only within the same day.
+    """
+
+    __tablename__ = "quote_snapshots"
+
+    asset_key: Mapped[str] = mapped_column(
+        "asset_symbol",
+        ForeignKey("assets.symbol", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    trade_date: Mapped[date] = mapped_column(Date, index=True)
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    price: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    change_percent: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    volume: Mapped[Decimal | None] = mapped_column(Numeric(24, 4))
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(24, 4))
+    turnover_rate: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    pe_ttm: Mapped[Decimal | None] = mapped_column(Numeric(20, 6))
+    source: Mapped[str] = mapped_column(String(32), default="ifind")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class SectorCapitalFlow(Base):
     """Daily EastMoney board (板块) capital-flow net rows.
 

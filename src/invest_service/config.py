@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import AliasChoices, Field, field_validator
@@ -52,6 +53,21 @@ class Settings(BaseSettings):
     sector_flow_sync_scopes_top: int = Field(default=30, ge=1, le=200)
     sector_flow_sync_scopes_parent: str | None = "em_industry"
 
+    # iFinD MCP real-time quote snapshots. The key may be given inline or via a
+    # mounted secret file; the file form keeps it out of .env and compose files.
+    ifind_mcp_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("INVEST_IFIND_MCP_KEY", "IFIND_MCP_KEY"),
+    )
+    ifind_mcp_key_file: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("INVEST_IFIND_MCP_KEY_FILE", "IFIND_MCP_KEY_FILE"),
+    )
+    quote_snapshot_enabled: bool = False
+    quote_snapshot_interval_minutes: int = Field(default=30, ge=5)
+    # 只抓自选标的：每次约 6 次 MCP 调用，避免把整个目录都拉一遍。
+    quote_snapshot_favorites_only: bool = True
+
     model_config = SettingsConfigDict(
         env_prefix="INVEST_",
         env_file=".env",
@@ -73,6 +89,17 @@ class Settings(BaseSettings):
         if value.startswith("mysql://"):
             return value.replace("mysql://", "mysql+pymysql://", 1)
         return value
+
+    def ifind_key(self) -> str | None:
+        """Resolve the iFinD MCP key from config, falling back to the secret file."""
+        if self.ifind_mcp_key:
+            return self.ifind_mcp_key.strip() or None
+        if self.ifind_mcp_key_file:
+            try:
+                return Path(self.ifind_mcp_key_file).read_text(encoding="utf-8").strip() or None
+            except OSError:
+                return None
+        return None
 
 
 @lru_cache
