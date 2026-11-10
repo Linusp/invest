@@ -98,3 +98,20 @@ def test_resolve_alice_skill_accepts_chinese_and_english():
     assert resolve_alice_skill(None) is None
     with pytest.raises(Exception):
         resolve_alice_skill("不存在的技能")
+
+
+def test_ifind_news_items_unwraps_json_string():
+    from invest_service.mcp_external import _ifind_news_items
+
+    payload = {"data": {"data": '[{"资讯标题": "标题", "日期": "2026-11-09"}]'}}
+    items = _ifind_news_items(payload)
+    assert items[0]["资讯标题"] == "标题"
+    assert _ifind_news_items({"data": {}}) == []
+
+
+def test_ifind_markdown_reads_answer_or_string():
+    from invest_service.mcp_external import _ifind_markdown
+
+    assert _ifind_markdown({"data": {"answer": "|a|b|"}}) == "|a|b|"
+    assert _ifind_markdown({"data": "plain"}) == "plain"
+    assert _ifind_markdown({"data": {}}) == ""

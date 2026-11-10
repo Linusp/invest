@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-import hashlib
+import json
 import logging
 import time
 from datetime import timedelta
@@ -16,6 +16,8 @@ from mcp.server.fastmcp import FastMCP
 from sqlalchemy.orm import sessionmaker
 
 from .config import get_settings
+from .providers.ifind_mcp import IfindMcpClient
+from .providers.iwencai import IwencaiProvider
 from .providers.wind_skills import (
     ALICE_SKILLS,
     DATA_TOOLS,
@@ -31,6 +33,9 @@ logger = logging.getLogger(__name__)
 
 WIND_DATA_TTL = timedelta(hours=6)
 ALICE_TTL = timedelta(hours=24)
+IFIND_NEWS_TTL = timedelta(hours=3)
+IFIND_SECTOR_TTL = timedelta(hours=6)
+IWENCAI_TTL = timedelta(hours=6)
 
 
 def _require_wind_key() -> str:
@@ -40,8 +45,35 @@ def _require_wind_key() -> str:
     return key
 
 
-def _prompt_fingerprint(tool: str, question: str) -> str:
-    return hashlib.sha256(f"{tool}\n{question}".encode("utf-8")).hexdigest()[:16]
+def _require_ifind_key() -> str:
+    key = get_settings().ifind_key()
+    if not key:
+        raise WindSkillError("IFIND_MCP_KEY 未配置，无法调用 iFinD 能力")
+    return key
+
+
+def _ifind_news_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """iFinD 把新闻列表塞在 data.data 的 JSON 字符串里。"""
+    data = payload.get("data")
+    raw = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(raw, str):
+        return []
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _ifind_markdown(payload: dict[str, Any]) -> str:
+    data = payload.get("data")
+    if isinstance(data, str):
+        return data
+    if isinstance(data, dict):
+        answer = data.get("answer")
+        if isinstance(answer, str):
+            return answer
+    return ""
 
 
 def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None:
@@ -143,6 +175,153 @@ def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None
             "duration_ms": duration_ms,
             "output": output,
         }
+
+    @mcp.tool()
+    def ifind_news(
+        query: str,
+        time_start: str,
+        time_end: str,
+        size: int = 5,
+        refresh: bool = False,
+    ) -> dict:
+        """Search iFinD financial news snippets for a subject.
+
+        ``time_start`` / ``time_end`` use YYYY-MM-DD. Returns title, content,
+        date and URL for each hit. Cached for 3 hours.
+        """
+        key = _require_ifind_key()
+        arguments = {
+            "query": query,
+            "time_start": time_start,
+            "time_end": time_end,
+            "size": size,
+        }
+        with session_factory() as session:
+            cache = ExternalCacheService(session)
+
+            def fetch() -> dict[str, Any]:
+                payload = IfindMcpClient(key).call(
+                    "news",
+                    "search_news",
+                    {
+                        "query": query,
+                        "size": size,
+                        "time_start": time_start,
+                        "time_end": time_end,
+                    },
+                )
+                return {"items": _ifind_news_items(payload)}
+
+            payload, hit = cache.get_or_fetch(
+                "ifind_news",
+                "search_news",
+                arguments,
+                IFIND_NEWS_TTL,
+                fetch,
+                enabled=get_settings().external_cache_enabled and not refresh,
+            )
+        return {**payload, "cached": hit}
+
+    @mcp.tool()
+    def ifind_notices(
+        query: str,
+        time_start: str,
+        time_end: str,
+        size: int = 5,
+        refresh: bool = False,
+    ) -> dict:
+        """Search iFinD company announcements (公告) for a subject.
+
+        Same parameters and caching as ``ifind_news``.
+        """
+        key = _require_ifind_key()
+        arguments = {
+            "query": query,
+            "time_start": time_start,
+            "time_end": time_end,
+            "size": size,
+        }
+        with session_factory() as session:
+            cache = ExternalCacheService(session)
+
+            def fetch() -> dict[str, Any]:
+                payload = IfindMcpClient(key).call(
+                    "news",
+                    "search_notice",
+                    {
+                        "query": query,
+                        "size": size,
+                        "time_start": time_start,
+                        "time_end": time_end,
+                    },
+                )
+                return {"items": _ifind_news_items(payload)}
+
+            payload, hit = cache.get_or_fetch(
+                "ifind_notice",
+                "search_notice",
+                arguments,
+                IFIND_NEWS_TTL,
+                fetch,
+                enabled=get_settings().external_cache_enabled and not refresh,
+            )
+        return {**payload, "cached": hit}
+
+    @mcp.tool()
+    def ifind_sector(query: str, refresh: bool = False) -> dict:
+        """Query iFinD sector (板块) data such as constituents and flows.
+
+        ``query`` is natural language, e.g. "电子板块 20261105-20261110 成份股个数".
+        Returns the Markdown table iFinD produces. Cached for 6 hours.
+        """
+        key = _require_ifind_key()
+        with session_factory() as session:
+            cache = ExternalCacheService(session)
+
+            def fetch() -> dict[str, Any]:
+                payload = IfindMcpClient(key).call("index", "sector_data", {"query": query})
+                return {"markdown": _ifind_markdown(payload)}
+
+            payload, hit = cache.get_or_fetch(
+                "ifind_sector",
+                "sector_data",
+                {"query": query},
+                IFIND_SECTOR_TTL,
+                fetch,
+                enabled=get_settings().external_cache_enabled and not refresh,
+            )
+        return {**payload, "cached": hit}
+
+    @mcp.tool()
+    def iwencai_screen(question: str, limit: int = 50, refresh: bool = False) -> dict:
+        """Screen A-share stocks with an iWenCai natural-language query.
+
+        Example: "总市值大于1000亿 且 市盈率小于15 的股票，返回代码、简称、PE、股息率".
+        Returns the rows iWenCai produced plus ``count``. Cached for 6 hours.
+        """
+        settings = get_settings()
+        provider = IwencaiProvider(settings.iwencai_api_key)
+        if not settings.iwencai_api_key:
+            raise WindSkillError("IWENCAI_API_KEY 未配置，无法调用问财")
+        with session_factory() as session:
+            cache = ExternalCacheService(session)
+
+            def fetch() -> dict[str, Any]:
+                payload = provider.query(question, limit=min(limit, 100))
+                return {
+                    "count": payload.get("code_count"),
+                    "rows": payload.get("datas") or [],
+                }
+
+            payload, hit = cache.get_or_fetch(
+                "iwencai",
+                "screen",
+                {"question": question, "limit": min(limit, 100)},
+                IWENCAI_TTL,
+                fetch,
+                enabled=settings.external_cache_enabled and not refresh,
+            )
+        return {**payload, "cached": hit}
 
     @mcp.tool()
     def list_skill_runs(limit: int = 20, source: str | None = None) -> list[dict]:

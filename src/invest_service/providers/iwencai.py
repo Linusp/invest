@@ -57,6 +57,15 @@ class IwencaiProvider(MarketDataProvider):
             trust_env=False,
         )
 
+    def query(self, question: str, page: int = 1, limit: int = 50) -> dict[str, Any]:
+        """Run one natural-language query and return the raw payload.
+
+        Used by the MCP screening tool; callers are responsible for caching.
+        """
+        if not question.strip():
+            raise ProviderError("问财查询内容不能为空")
+        return self._query_api(question, page=page, limit=limit)
+
     def search(
         self,
         query: str,
