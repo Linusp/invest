@@ -169,3 +169,15 @@ def test_catalog_paginates_hk_and_us_stocks_and_normalizes_symbols():
         ("1", "1"),
         ("2", "1"),
     ]
+
+
+def test_daily_quota_exhausted_raises_clear_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, text="您今天的次数已用完，建议您升级权益")
+
+    provider = IwencaiProvider(
+        "secret", client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    with pytest.raises(ProviderError) as exc:
+        provider.query("贵州茅台 总市值", limit=1)
+    assert "额度已用完" in str(exc.value)

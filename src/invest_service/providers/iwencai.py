@@ -167,6 +167,11 @@ class IwencaiProvider(MarketDataProvider):
                     "expand_index": "true",
                 },
             )
+            if response.status_code in {401, 429}:
+                detail = response.text[:200]
+                if "次数已用完" in detail or "额度" in detail:
+                    raise ProviderError(f"问财当日额度已用完: {detail}")
+                raise ProviderError(f"iWencai 鉴权/限流失败({response.status_code}): {detail}")
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
