@@ -359,6 +359,42 @@ class QuoteSnapshot(Base):
     )
 
 
+class ExternalCache(Base):
+    """Cached response from a third-party data/skill provider.
+
+    Cache keys are content-addressed (sha256 of source + tool + arguments), so
+    the same question hits the same row regardless of call order.
+    """
+
+    __tablename__ = "external_cache"
+
+    cache_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    tool: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class SkillRun(Base):
+    """One execution of an unstructured skill (e.g. Wind Alice workflows)."""
+
+    __tablename__ = "skill_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), index=True)
+    skill: Mapped[str | None] = mapped_column(String(128))
+    prompt: Mapped[str] = mapped_column(Text)
+    output: Mapped[str] = mapped_column(Text)
+    duration_ms: Mapped[int] = mapped_column(default=0)
+    cache_hit: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+
+
 class SectorCapitalFlow(Base):
     """Daily EastMoney board (板块) capital-flow net rows.
 

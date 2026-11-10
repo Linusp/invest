@@ -1,0 +1,169 @@
+"""对外部能力的 MCP 工具注册。
+
+结构化数据（Wind 数据工具、问财、iFinD）走「内容寻址缓存 + TTL」；
+非结构化 skill（Wind Alice）每次执行落 ``skill_runs``，缓存命中不重复执行。
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+import time
+from datetime import timedelta
+from typing import Any
+
+from mcp.server.fastmcp import FastMCP
+from sqlalchemy.orm import sessionmaker
+
+from .config import get_settings
+from .providers.wind_skills import (
+    ALICE_SKILLS,
+    DATA_TOOLS,
+    WindAliceClient,
+    WindDataTools,
+    WindSkillError,
+    resolve_alice_skill,
+)
+from .services.external_cache import ExternalCacheService, cache_key
+from .services.skill_runs import SkillRunService
+
+logger = logging.getLogger(__name__)
+
+WIND_DATA_TTL = timedelta(hours=6)
+ALICE_TTL = timedelta(hours=24)
+
+
+def _require_wind_key() -> str:
+    key = get_settings().wind_key()
+    if not key:
+        raise WindSkillError("WIND_API_KEY 未配置，无法调用 Wind 能力")
+    return key
+
+
+def _prompt_fingerprint(tool: str, question: str) -> str:
+    return hashlib.sha256(f"{tool}\n{question}".encode("utf-8")).hexdigest()[:16]
+
+
+def register_external_tools(mcp: FastMCP, session_factory: sessionmaker) -> None:
+    @mcp.tool()
+    def wind_data(tool: str, question: str, refresh: bool = False) -> dict:
+        """Query Wind's structured data tools with natural language.
+
+        ``tool`` must be one of: get_stock_summary, get_stock_fundamentals,
+        get_stock_equity_holders, get_risk_metrics, get_stock_events,
+        get_stock_technicals, search_stocks. ``question`` should name the
+        security and the fields you want (e.g. "贵州茅台 2025年报 ROE 毛利率").
+        Results are cached for 6 hours; pass refresh=True to bypass the cache.
+        """
+        if tool not in DATA_TOOLS:
+            raise WindSkillError(
+                f"tool 必须是以下之一: {', '.join(sorted(DATA_TOOLS))}"
+            )
+        key = _require_wind_key()
+        arguments = {"tool": tool, "question": question}
+        with session_factory() as session:
+            cache = ExternalCacheService(session)
+
+            def fetch() -> dict[str, Any]:
+                return WindDataTools(key).call(tool, question)
+
+            payload, hit = cache.get_or_fetch(
+                "wind",
+                tool,
+                arguments,
+                WIND_DATA_TTL,
+                fetch,
+                enabled=get_settings().external_cache_enabled and not refresh,
+            )
+        return {**payload, "cached": hit}
+
+    @mcp.tool()
+    def wind_alice(prompt: str, skill: str | None = None, refresh: bool = False) -> dict:
+        """Run a Wind Alice research workflow and store the result.
+
+        Use for company one-pagers, earnings reviews, comparables, thematic
+        screening, fact checks, macro/bond/credit analysis. ``skill`` accepts
+        the Chinese or English name (e.g. "公司一页纸" / "Company One-Page
+        Investment Memo"); omit it to let Alice decide. Results are cached for
+        24 hours and every run is recorded in ``list_skill_runs``.
+        """
+        if not prompt.strip():
+            raise WindSkillError("prompt 不能为空")
+        resolved = resolve_alice_skill(skill)
+        key = _require_wind_key()
+        arguments = {"prompt": prompt, "skill": resolved.zh if resolved else None}
+        settings = get_settings()
+
+        with session_factory() as session:
+            cache = ExternalCacheService(session)
+            runs = SkillRunService(session)
+
+            cached = None
+            if settings.external_cache_enabled and not refresh:
+                cached = cache.get(cache_key("wind_alice", "alice", arguments))
+            if cached is not None:
+                run_id = runs.record(
+                    source="wind_alice",
+                    skill=resolved.zh if resolved else None,
+                    prompt=prompt,
+                    output=str(cached.get("output", "")),
+                    duration_ms=0,
+                    cache_hit=True,
+                )
+                return {
+                    "run_id": run_id,
+                    "cached": True,
+                    "skill": resolved.zh if resolved else None,
+                    "output": cached.get("output", ""),
+                }
+
+            started = time.monotonic()
+            output = WindAliceClient(key).run(prompt, resolved)
+            duration_ms = int((time.monotonic() - started) * 1000)
+            run_id = runs.record(
+                source="wind_alice",
+                skill=resolved.zh if resolved else None,
+                prompt=prompt,
+                output=output,
+                duration_ms=duration_ms,
+                cache_hit=False,
+            )
+            if settings.external_cache_enabled:
+                cache.put(
+                    cache_key("wind_alice", "alice", arguments),
+                    "wind_alice",
+                    "alice",
+                    {"output": output},
+                    ALICE_TTL,
+                )
+        return {
+            "run_id": run_id,
+            "cached": False,
+            "skill": resolved.zh if resolved else None,
+            "duration_ms": duration_ms,
+            "output": output,
+        }
+
+    @mcp.tool()
+    def list_skill_runs(limit: int = 20, source: str | None = None) -> list[dict]:
+        """List recent unstructured skill runs (prompt, skill, output, timing)."""
+        with session_factory() as session:
+            rows = SkillRunService(session).recent(source=source, limit=min(limit, 100))
+            return [
+                {
+                    "id": row.id,
+                    "source": row.source,
+                    "skill": row.skill,
+                    "prompt": row.prompt,
+                    "output": row.output,
+                    "duration_ms": row.duration_ms,
+                    "cache_hit": row.cache_hit,
+                    "created_at": row.created_at.isoformat() if row.created_at else None,
+                }
+                for row in rows
+            ]
+
+    logger.info(
+        "[external] registered wind tools; alice skills=%s",
+        len(ALICE_SKILLS),
+    )

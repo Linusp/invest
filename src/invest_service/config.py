@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     )
     # 历史行情的源优先级（从高到低，逗号分隔）。
     provider_priority: str = "akshare,eastmoney,tushare,wind,iwencai"
+    # 外部能力（Wind/iFinD/问财）的响应缓存，减少额度消耗。
+    external_cache_enabled: bool = True
 
     model_config = SettingsConfigDict(
         env_prefix="INVEST_",

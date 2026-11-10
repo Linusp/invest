@@ -1090,6 +1090,9 @@ def build_mcp(
             trade_plan_id,
         )
 
+    from .mcp_external import register_external_tools
+
+    register_external_tools(mcp, session_factory)
     return mcp
 
 
