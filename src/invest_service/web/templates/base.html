@@ -35,7 +35,7 @@
         <form id="global-market-search" class="global-search" role="search">
             <i data-lucide="search"></i>
             <select id="global-market-category" aria-label="搜索标的类型">
-                <option value="">全部</option><option value="stock">个股</option><option value="etf">ETF</option><option value="index">指数</option>
+                <option value="">全部</option><option value="stock">个股</option><option value="etf">ETF</option><option value="index">指数</option><option value="fund">场外基金</option>
             </select>
             <input id="global-market-query" type="search" placeholder="搜索代码、名称或拼音" autocomplete="off" aria-label="搜索行情标的">
             <div id="global-market-results" class="global-search-results" hidden></div>
@@ -80,7 +80,7 @@
             let timer = null;
             let assets = [];
             let activeIndex = -1;
-            const categoryLabels = {stock: "个股", etf: "ETF", index: "指数"};
+            const categoryLabels = {stock: "个股", etf: "ETF", index: "指数", fund: "场外基金"};
 
             const hideResults = () => {
                 results.hidden = true;

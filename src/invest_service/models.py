@@ -38,6 +38,7 @@ class AssetCategory(str, enum.Enum):
     STOCK = "stock"
     ETF = "etf"
     INDEX = "index"
+    FUND = "fund"
 
 
 class MarketScopeType(str, enum.Enum):

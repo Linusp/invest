@@ -97,7 +97,7 @@
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, character => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
     })[character]);
-    const categoryLabel = {stock: "个股", etf: "ETF", index: "指数"};
+    const categoryLabel = {stock: "个股", etf: "ETF", index: "指数", fund: "场外基金"};
     const defaultTagCategories = {"个股": "stock", "ETF": "etf", "指数": "index"};
     const signedPercent = (value) => {
         if (value == null) return "--";

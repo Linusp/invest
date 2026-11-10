@@ -21,6 +21,8 @@ def infer_default_tags(
     industry: str | None = None,
 ) -> tuple[str, ...]:
     industry = (industry or "").strip()
+    if category == AssetCategory.FUND:
+        return ("场外基金",)
     if category == AssetCategory.ETF:
         return ("ETF",)
     if category == AssetCategory.INDEX:

@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING
 
 from ..models import AssetCategory
 from .akshare import AkshareFallbackProvider
+from .akshare_fund import AkshareFundProvider
 from .base import MarketDataProvider
 from .eastmoney import EastMoneyProvider
 from .fallback import MarketFallbackProvider, PrioritizedMarketProvider
@@ -32,6 +33,7 @@ def make_market_provider(settings: "Settings") -> MarketDataProvider:
     tushare = TushareProvider(settings.tushare_token)
     iwencai = IwencaiProvider(settings.iwencai_api_key)
     akshare = AkshareFallbackProvider(etf_history_provider=eastmoney)
+    fund = AkshareFundProvider()
     wind_key = settings.wind_key()
     wind = WindMarketProvider(wind_key) if wind_key else None
 
@@ -56,6 +58,8 @@ def make_market_provider(settings: "Settings") -> MarketDataProvider:
         "wind": wind,
         "iwencai": iwencai if settings.iwencai_api_key else None,
     }
+    # 场外基金没有交易所行情，akshare 走独立的净值/目录实现。
+    fund_providers = {**providers, "akshare": fund}
     allowed: dict[AssetCategory, set[str]] = {
         AssetCategory.STOCK: {"eastmoney", "akshare", "tushare", "wind", "iwencai"},
         AssetCategory.INDEX: (
@@ -68,7 +72,9 @@ def make_market_provider(settings: "Settings") -> MarketDataProvider:
             if etf_enabled
             else {"eastmoney", "tushare", "wind", "iwencai"}
         ),
+        AssetCategory.FUND: {"akshare", "wind"},
     }
+    per_category = {AssetCategory.FUND: fund_providers}
 
     order = [
         name.strip().lower()
@@ -77,16 +83,19 @@ def make_market_provider(settings: "Settings") -> MarketDataProvider:
     ]
     history_providers: dict[AssetCategory, tuple[MarketDataProvider, ...]] = {}
     for category, names in allowed.items():
+        source = per_category.get(category, providers)
         chain = [
             provider
             for name in order
-            if (provider := providers.get(name)) is not None and name in names
+            if (provider := source.get(name)) is not None and name in names
         ]
         history_providers[category] = tuple(chain)
 
     search_providers: list[MarketDataProvider] = [eastmoney]
     if etf_enabled:
         search_providers.append(akshare)
+    # 场外基金的目录也进搜索索引，否则只能靠手输代码登记。
+    search_providers.append(fund)
     if settings.iwencai_api_key:
         search_providers.append(iwencai)
     search_providers.append(tushare)

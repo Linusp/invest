@@ -173,6 +173,7 @@ class WindMarketProvider(MarketDataProvider):
         AssetCategory.STOCK: _WindTool("stock", "get_stock_kline"),
         AssetCategory.INDEX: _WindTool("index", "get_index_kline"),
         AssetCategory.ETF: _WindTool("fund", "get_fund_kline"),
+        AssetCategory.FUND: _WindTool("fund", "get_fund_kline"),
     }
 
     def __init__(self, api_key: str | None, client: WindMcpClient | None = None):

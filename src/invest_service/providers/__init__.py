@@ -1,4 +1,5 @@
 from .akshare import AkshareFallbackProvider, AkshareIndexProvider
+from .akshare_fund import AkshareFundProvider
 from .base import MarketDataProvider, ProviderAsset, ProviderBar, ProviderError
 from .eastmoney import EastMoneyProvider
 from .exchange_rates import EcbExchangeRateProvider, ProviderExchangeRates
@@ -17,6 +18,7 @@ __all__ = [
     "EcbExchangeRateProvider",
     "AkshareIndexProvider",
     "AkshareFallbackProvider",
+    "AkshareFundProvider",
     "IndexFallbackProvider",
     "IwencaiProvider",
     "MarketFallbackProvider",

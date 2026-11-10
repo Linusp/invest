@@ -150,7 +150,7 @@
     const commentaryTimeline = window.CommentaryTimeline.mount({
         container: "#asset-commentary", title: "标的点评",
     });
-    const categoryLabel = {stock: "个股", etf: "ETF", index: "指数"};
+    const categoryLabel = {stock: "个股", etf: "ETF", index: "指数", fund: "场外基金"};
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, character => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;",
     })[character]);

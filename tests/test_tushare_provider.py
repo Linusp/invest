@@ -9,6 +9,7 @@ from invest_service.config import Settings
 from invest_service.models import AssetCategory
 from invest_service.providers import (
     AkshareFallbackProvider,
+    AkshareFundProvider,
     EastMoneyProvider,
     IndexFallbackProvider,
     IwencaiProvider,
@@ -226,6 +227,7 @@ def test_factory_defaults_to_free_first_with_tushare_last():
     assert [type(item) for item in provider.search_providers] == [
         EastMoneyProvider,
         AkshareFallbackProvider,
+        AkshareFundProvider,
         TushareProvider,
     ]
     assert [type(item) for item in provider.history_providers[AssetCategory.STOCK]] == [
@@ -275,11 +277,13 @@ def test_factory_orders_tushare_before_quota_limited_providers():
     )
 
     assert isinstance(provider, PrioritizedMarketProvider)
-    assert [type(item) for item in provider.search_providers][-2:] == [
+    assert [type(item) for item in provider.search_providers][-3:] == [
+        AkshareFundProvider,
         IwencaiProvider,
         TushareProvider,
     ]
-    for category in AssetCategory:
+    # 场外基金只走 akshare-fund（Wind 可选），不参与这条问财排序。
+    for category in (AssetCategory.STOCK, AssetCategory.INDEX, AssetCategory.ETF):
         history_types = [type(item) for item in provider.history_providers[category]]
         assert history_types[-1] is IwencaiProvider
         assert history_types.index(TushareProvider) < history_types.index(IwencaiProvider)

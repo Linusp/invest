@@ -6,6 +6,8 @@ import sys
 from typing import Any
 
 ALLOWED_FUNCTIONS = {
+    "fund_name_em",
+    "fund_open_fund_info_em",
     "fund_etf_category_sina",
     "fund_etf_hist_sina",
     "fund_etf_spot_em",
