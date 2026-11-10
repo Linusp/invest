@@ -317,10 +317,11 @@ def build_mcp(
             return _json(tag)
 
     @mcp.tool()
-    def delete_tag(name: str) -> None:
+    def delete_tag(name: str) -> dict:
         """Delete a custom group; system category groups cannot be deleted."""
         with session_factory() as session:
             MarketService(session, provider).delete_tag(name)
+        return {"status": "deleted", "deleted": True}
 
     @mcp.tool()
     def reorder_tags(names: list[str]) -> list[dict]:
@@ -419,10 +420,11 @@ def build_mcp(
             return _json(MarketScopeRead.model_validate(scope))
 
     @mcp.tool()
-    def delete_market_scope(code: str) -> None:
+    def delete_market_scope(code: str) -> dict:
         """Delete an empty market scope."""
         with session_factory() as session:
             market_scopes(session).delete(code)
+        return {"status": "deleted", "deleted": True, "code": code}
 
     @mcp.tool()
     def create_commentary(
@@ -962,10 +964,11 @@ def build_mcp(
             return _json(OpeningSnapshotRead.model_validate(snapshot)) if snapshot else None
 
     @mcp.tool()
-    def delete_strategy_opening_snapshot(strategy_id: str) -> None:
+    def delete_strategy_opening_snapshot(strategy_id: str) -> dict:
         """Delete a strategy opening snapshot when it has no later transactions."""
         with session_factory() as session:
             strategies(session).delete_opening_snapshot(strategy_id)
+        return {"status": "deleted", "deleted": True}
 
     @mcp.tool()
     def get_strategy_trades(strategy_id: str) -> list[dict]:
@@ -1046,7 +1049,7 @@ def build_mcp(
         return get_strategy_opening_snapshot(portfolio_id)
 
     @mcp.tool()
-    def delete_portfolio_opening_snapshot(portfolio_id: str) -> None:
+    def delete_portfolio_opening_snapshot(portfolio_id: str) -> dict:
         """Delete a portfolio opening snapshot when it has no later transactions."""
         return delete_strategy_opening_snapshot(portfolio_id)
 
@@ -1094,9 +1097,10 @@ def build_mcp(
         )
 
     from .mcp_external import register_external_tools
-    from .mcp_schema import enrich_mcp
+    from .mcp_schema import apply_output_models, enrich_mcp
 
     register_external_tools(mcp, session_factory)
+    apply_output_models(mcp)
     enrich_mcp(mcp)
     return mcp
 

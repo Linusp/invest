@@ -3,9 +3,20 @@ import asyncio
 from invest_service.mcp_server import build_mcp
 
 
+def _plain(value):
+    """工具返回值现在可能是 pydantic 模型，测试统一转回 dict。"""
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if isinstance(value, list):
+        return [_plain(item) for item in value]
+    return value
+
+
 def _call_tool(mcp, name, arguments):
-    return asyncio.run(
-        mcp._tool_manager.call_tool(name, arguments, context=None, convert_result=False)
+    return _plain(
+        asyncio.run(
+            mcp._tool_manager.call_tool(name, arguments, context=None, convert_result=False)
+        )
     )
 
 

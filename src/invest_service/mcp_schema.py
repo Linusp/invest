@@ -286,3 +286,129 @@ def enrich_mcp(mcp: Any) -> None:
             for key, value in props.items():
                 if value.get("type") == "object" or value.get("type") == "array":
                     value.setdefault("description", doc[1] if doc else "工具返回")
+
+
+# 工具 → (输出模型, 是否数组)。只列需要结构化输出的工具；返回 None 的写操作跳过。
+def _output_model_map() -> dict[str, tuple[type, bool]]:
+    from . import mcp_models as m
+
+    single_asset = ("AssetOut", False)
+    mapping: dict[str, tuple[type, bool]] = {}
+    for name in ("get_asset", "register_asset", "set_asset_favorite", "refresh_asset_market_data"):
+        mapping[name] = (m.AssetOut, single_asset[1])
+    for name in ("list_assets", "search_assets", "list_tag_assets"):
+        mapping[name] = (m.AssetOut, True)
+    mapping["get_market_history"] = (m.BarOut, True)
+
+    mapping["create_tag"] = (m.TagOut, False)
+    for name in ("list_tags", "reorder_tags", "pin_tag", "add_asset_tag",
+                 "remove_asset_tag", "update_asset_tags"):
+        mapping[name] = (m.TagOut, True)
+    mapping["list_asset_tags"] = (m.AssetTagOut, True)
+
+    for name in ("create_portfolio", "get_portfolio", "update_portfolio",
+                 "create_strategy", "get_strategy", "update_strategy"):
+        mapping[name] = (m.PortfolioOut, False)
+    for name in ("list_portfolios", "list_strategies"):
+        mapping[name] = (m.PortfolioOut, True)
+    for name in ("get_portfolio_positions", "get_strategy_positions"):
+        mapping[name] = (m.PositionOut, True)
+    for name in ("get_portfolio_trades", "get_strategy_trades"):
+        mapping[name] = (m.TradeOut, True)
+    for name in ("add_portfolio_trade", "add_strategy_trade"):
+        mapping[name] = (m.TradeOut, False)
+    for name in ("get_portfolio_opening_snapshot", "set_portfolio_opening_snapshot",
+                 "get_strategy_opening_snapshot", "set_strategy_opening_snapshot"):
+        mapping[name] = (m.SnapshotOut, False)
+
+    mapping["create_market_scope"] = (m.ScopeOut, False)
+    mapping["list_market_scopes"] = (m.ScopeOut, True)
+    mapping["get_market_scope"] = (m.ScopeOut, False)
+    mapping["update_market_scope"] = (m.ScopeOut, False)
+
+    for name in ("create_commentary", "get_commentary", "revise_commentary",
+                 "link_information_to_commentary", "unlink_information_from_commentary"):
+        mapping[name] = (m.CommentaryOut, False)
+    mapping["list_commentaries"] = (m.CommentaryOut, True)
+    mapping["list_commentary_information"] = (m.InformationOut, True)
+
+    mapping["submit_information"] = (m.InformationOut, False)
+    mapping["list_information"] = (m.InformationOut, True)
+    mapping["get_information"] = (m.InformationOut, False)
+
+    for name in ("create_trade_plan", "get_trade_plan", "update_trade_plan",
+                 "change_trade_plan_status"):
+        mapping[name] = (m.TradePlanOut, False)
+    mapping["list_trade_plans"] = (m.TradePlanOut, True)
+    mapping["get_trade_plan_history"] = (m.PlanEventOut, True)
+    mapping["review_trade_plan"] = (m.PlanReviewOut, False)
+    mapping["get_trade_plan_review"] = (m.PlanReviewOut, False)
+
+    for name in ("list_sector_capital_flows", "get_sector_capital_flow"):
+        mapping[name] = (m.SectorFlowRow, True)
+    mapping["get_exchange_rate"] = (m.ExchangeRateOut, False)
+
+    for name in (
+        "delete_tag",
+        "delete_market_scope",
+        "delete_strategy_opening_snapshot",
+        "delete_portfolio_opening_snapshot",
+    ):
+        mapping[name] = (m.DeleteOut, False)
+
+    mapping["provider_status"] = (m.ProviderStatusOut, True)
+    mapping["provider_reset"] = (m.ProviderResetOut, False)
+    mapping["list_skill_runs"] = (m.SkillRunOut, True)
+
+    for name in (
+        "wind_data", "wind_alice", "ifind_news", "ifind_notices", "ifind_sector",
+        "yingmi_fund_search", "yingmi_fund_detail", "yingmi_fund_performance",
+        "yingmi_fund_nav", "yingmi_fund_risk", "yingmi_fund_diagnosis", "yingmi_fund_news",
+        "mx_finance", "indexhub_etf_search", "indexhub_etf_detail",
+        "indexhub_etf_holdings", "indexhub_etf_dividends", "indexhub_etf_by_stock",
+        "indexhub_index_detail", "indexhub_index_valuation",
+        "tdx_quote", "tdx_kline", "tdx_stock_lookup", "tdx_api_data",
+        "tdx_screener", "tdx_news", "iwencai_screen",
+    ):
+        mapping[name] = (m.ExternalResult, False)
+    return mapping
+
+
+def apply_output_models(mcp: Any) -> None:
+    """把工具返回值包成 pydantic 模型，从而生成真实的 outputSchema。"""
+    import functools
+    import inspect
+
+    from mcp.server.fastmcp.tools import Tool
+
+    from . import mcp_models
+
+    mapping = _output_model_map()
+    manager = mcp._tool_manager  # noqa: SLF001
+    for name, (model, is_list) in mapping.items():
+        tool = manager._tools.get(name)
+        if tool is None:
+            continue
+        original = tool.fn
+        annotation = list[model] if is_list else model
+
+        @functools.wraps(original)
+        def wrapper(*args, _fn=original, _model=model, _list=is_list, **kwargs):
+            result = _fn(*args, **kwargs)
+            if result is None:
+                return None
+            if _list:
+                return [_model.model_validate(item) for item in result]
+            return _model.model_validate(result)
+
+        signature = inspect.signature(original)
+        wrapper.__signature__ = signature.replace(return_annotation=annotation)
+        wrapper.__annotations__ = {
+            **getattr(original, "__annotations__", {}),
+            "return": annotation,
+        }
+        manager._tools[name] = Tool.from_function(
+            wrapper, name=name, description=tool.description or ""
+        )
+
+    _ = mcp_models  # 保持导入，便于诊断

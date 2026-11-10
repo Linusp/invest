@@ -35,3 +35,35 @@ def test_tool_docs_cover_all_registered_tools(session_factory, provider):
         "未写文档": sorted(names - set(TOOL_DOCS)),
         "多余文档": sorted(set(TOOL_DOCS) - names),
     }
+
+
+def _is_structured(schema: dict | None) -> bool:
+    schema = schema or {}
+    properties = schema.get("properties") or {}
+    if schema.get("$defs"):
+        return True
+    if properties and set(properties) != {"result"}:
+        return True
+    result = properties.get("result") or {}
+    return bool((result.get("items") or {}).get("$ref"))
+
+
+def test_every_tool_publishes_a_structured_output_schema(session_factory, provider):
+    untyped = [
+        tool.name
+        for tool in _tools(session_factory, provider)
+        if not _is_structured(tool.outputSchema)
+    ]
+    assert untyped == [], f"缺少结构化输出: {untyped}"
+
+
+def test_known_tools_expose_domain_fields(session_factory, provider):
+    tools = {t.name: t for t in _tools(session_factory, provider)}
+    assets = tools["search_assets"].outputSchema or {}
+    assert "AssetOut" in (assets.get("$defs") or {})
+
+    external = tools["wind_data"].outputSchema or {}
+    assert {"data", "cached"} <= set(external.get("properties") or {})
+
+    flows = tools["list_sector_capital_flows"].outputSchema or {}
+    assert "SectorFlowRow" in (flows.get("$defs") or {})
