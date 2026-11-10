@@ -95,3 +95,27 @@ akshare,eastmoney,tushare,wind,iwencai
 
 
 配置统一使用 `INVEST_` 前缀，修改 `.env` 后需重启 API、Worker 和 Beat。
+
+## 外部能力（Wind / iFinD / 问财）
+
+这些能力不是「行情源」，而是 invest 本身没有、借外部服务补上的查询与分析入口，
+统一通过 MCP 暴露：
+
+| 工具 | 来源 | 说明 | 缓存 |
+|---|---|---|---|
+| `wind_data` | Wind | 7 个结构化工具：公司摘要、财务、股东、风险、事件、技术指标、选股 | 6 小时 |
+| `wind_alice` | Wind | 14 个分析工作流（公司一页纸、财报点评、可比公司等），返回 Markdown | 24 小时 |
+| `list_skill_runs` | 本地 | 列出历史 skill 执行记录（提示词、输出、耗时、是否命中缓存） | — |
+| `ifind_news` / `ifind_notices` | iFinD | 新闻与公告片段 | 3 小时 |
+| `ifind_sector` | iFinD | 板块数据（成分、区间涨跌、净买入），返回 Markdown | 6 小时 |
+| `iwencai_screen` | 问财 | 自然语言选股 | 6 小时 |
+
+实现要点：
+
+- **缓存**：`external_cache` 按 `sha256(source + tool + arguments)` 内容寻址；同参数重复调用不消耗额度。
+  设置 `EXTERNAL_CACHE_ENABLED=false` 可关闭，工具参数 `refresh=true` 可单次绕过。
+- **运行留档**：非结构化的 `wind_alice` 每次真实执行写一条 `skill_runs`（skill、prompt、输出、
+  耗时、是否缓存命中），可用 `list_skill_runs` 回看；缓存命中时也会记录一条 `cache_hit=true`。
+- **额度**：问财按天计次，耗尽时返回 401 并在错误里写明「当日额度已用完」；Wind Alice 有独立的
+  体验期限额，服务端繁忙时会返回「服务繁忙」。
+- 结构化结果与 Markdown 原样返回，不做二次改写，避免丢失上游信息。

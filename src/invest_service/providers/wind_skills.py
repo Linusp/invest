@@ -178,9 +178,38 @@ def _event_blocks(payload: str) -> list[dict[str, Any]]:
     return events
 
 
+def _collect_markdown(node: Any) -> str | None:
+    """从 A2A 的 UI 组件树里收集 A2A.Markdown 的文本。"""
+    chunks: list[str] = []
+
+    def walk(value: Any) -> None:
+        if isinstance(value, dict):
+            if value.get("componentName") == "A2A.Markdown":
+                text = (value.get("properties") or {}).get("text")
+                if isinstance(text, str):
+                    chunks.append(text)
+                elif isinstance(text, list):
+                    chunks.extend(str(item) for item in text if isinstance(item, str))
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(node)
+    return "\n".join(chunk for chunk in chunks if chunk).strip() or None
+
+
 def extract_alice_result(payload: str) -> str | None:
-    """从 SSE 事件流里取最后一个 agentResult（与官方 skill 的解析口径一致）。"""
+    """从 SSE 事件流里取 Alice 的结果。
+
+    兼容两种形态：官方的 ``agentResult`` 数据块，以及 UI 组件树里的
+    ``A2A.Markdown``。任务失败（state=failed）时抛出带服务端文案的错误。
+    """
     value: Any = None
+    failed = False
+    failure_text: str | None = None
+
     for event in _event_blocks(payload):
         if event.get("error") is not None:
             raise WindSkillError(str(event["error"].get("message") or event["error"]))
@@ -192,16 +221,32 @@ def extract_alice_result(payload: str) -> str | None:
                 if isinstance(part, dict)
             )
             raise WindSkillError(message or "Wind Alice 返回错误")
-        if result.get("kind") != "artifact-update":
+
+        kind = result.get("kind")
+        if kind == "status-update":
+            state = (result.get("status") or {}).get("state")
+            if state == "failed":
+                failed = True
+                failure_text = _collect_markdown(result.get("status")) or failure_text
             continue
+        if kind != "artifact-update":
+            continue
+
         artifact = result.get("artifact") or {}
-        if artifact.get("name") != "agentResult":
+        if artifact.get("name") == "agentResult":
+            for part in artifact.get("parts") or []:
+                if isinstance(part, dict) and part.get("kind") == "data":
+                    data = part.get("data") or {}
+                    if data.get("data") is not None:
+                        value = data["data"]
             continue
-        for part in artifact.get("parts") or []:
-            if isinstance(part, dict) and part.get("kind") == "data":
-                data = part.get("data") or {}
-                if data.get("data") is not None:
-                    value = data["data"]
+        text = _collect_markdown(artifact)
+        if text:
+            value = text
+
+    if failed:
+        detail = failure_text or (value if isinstance(value, str) else None)
+        raise WindSkillError(detail or "Wind Alice 任务失败")
     if value is None:
         return None
     return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, indent=2)

@@ -115,3 +115,24 @@ def test_ifind_markdown_reads_answer_or_string():
     assert _ifind_markdown({"data": {"answer": "|a|b|"}}) == "|a|b|"
     assert _ifind_markdown({"data": "plain"}) == "plain"
     assert _ifind_markdown({"data": {}}) == ""
+
+
+def test_extract_alice_result_from_ui_markdown():
+    payload = (
+        'data: {"jsonrpc":"2.0","result":{"kind":"artifact-update","artifact":{'
+        '"parts":[{"kind":"data","data":{"__ui__":{"componentName":"Root","children":['
+        '{"componentName":"A2A.Markdown","properties":{"text":["# 结论","正文"]}}]}}}]}}}\n\n'
+    )
+    assert extract_alice_result(payload) == "# 结论\n正文"
+
+
+def test_extract_alice_result_raises_on_failed_state():
+    payload = (
+        'data: {"jsonrpc":"2.0","result":{"kind":"artifact-update","artifact":{'
+        '"parts":[{"kind":"data","data":{"__ui__":{"componentName":"Root","children":['
+        '{"componentName":"A2A.Markdown","properties":{"text":["抱歉，服务繁忙，请稍后再试"]}}]}}}]}}}\n\n'
+        'data: {"jsonrpc":"2.0","result":{"kind":"status-update","status":{"state":"failed"}}}\n\n'
+    )
+    with pytest.raises(Exception) as exc:
+        extract_alice_result(payload)
+    assert "服务繁忙" in str(exc.value)
